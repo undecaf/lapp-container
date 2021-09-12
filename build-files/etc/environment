@@ -1,0 +1,24 @@
+# Container environment variables
+export HOSTNAME=$(hostname)
+export LAPP_LANG=${LAPP_LANG:-C.UTF-8}
+
+# Proxy settings, always lowercase
+export http_proxy=${http_proxy:-$HTTP_PROXY}
+export https_proxy=${https_proxy:-$HTTPS_PROXY}
+
+# Derived environment variables
+export LOGS_BASE=/var/log
+
+export APACHE_USER=apache
+export APACHE_CERT=$WWW_ROOT/.ssl/server
+export APACHE_CUSTOM_CERT=/etc/ssl/apache2/custom
+export APACHE_LOGS=$LOGS_BASE/apache2
+
+export DOCROOT=$WWW_ROOT/public
+
+export PG_USER=postgres
+export PG_DATA=$PG_ROOT/pgdata
+export PG_RUN=/run/postgresql
+
+# Original stdout at the entrypoint
+export STDOUT=/var/run/stdout

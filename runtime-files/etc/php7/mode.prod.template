@@ -1,0 +1,15 @@
+# Production mode PHP settings
+display_errors=Off
+display_startup_errors=Off
+log_errors=On
+error_log=syslog
+error_reporting=E_ALL & ~E_DEPRECATED & ~E_STRICT
+max_input_time=60
+output_buffering=4096
+register_argc_argv=Off
+request_order="GP"
+session.gc_divisor=1000
+session.sid_bits_per_character=5
+short_open_tag=Off
+variables_order="GPCS"
+expose_php=Off

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#
+# Starts PostgreSQL
+# =================
+#
+
+set -e
+
+. /usr/local/lib/env.inc
+
+# Load the runtime environment
+load_env
+
+# Let s6 start PostgreSQL as a service
+exec s6-envdir ${ENV_DIR} \
+    su-exec $PG_USER \
+    postgres \
+        -D $PG_DATA \
+        --listen_addresses='*' \
+        --log_destination=syslog \
+        --log_line_prefix='' \
+        -e

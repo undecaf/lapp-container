@@ -1,0 +1,1119 @@
+#!/bin/bash
+
+#
+# Controls execution and configuration of LAPP in a container
+# ===========================================================
+#
+# For help, run this script without any arguments.
+#
+# Copyright F. Kasper <fkasper@modus-operandi.at> 2019-present
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+
+# Constants
+IMG_REPO_SLUG=localhost/undecaf/lapp
+IMG_WWW_ROOT=/var/www/localhost
+IMG_PG_DATA=/var/lib/postgresql/data
+IMG_CERT_BASENAME=/etc/ssl/apache2/custom
+IMG_FILE_LIMIT='nofile=10000:15000'
+IMG_ENV_RE='TIMEZONE|LANG|MODE|PHP_.+'
+
+# Bypass aliases
+AWK=$(which awk)
+BASENAME=$(which basename)
+CAT=$(which cat)
+DF=$(which df)
+DIRNAME=$(which dirname)
+GREP=$(which grep)
+HOSTNAME=$(which hostname)
+IFCONFIG=$(which ifconfig)
+IP=$(which ip)
+KILL=$(which kill)
+LS=$(which ls)
+MKDIR=$(which mkdir)
+PRINTENV=$(which printenv)
+PS=$(which ps)
+SLEEP=$(which sleep)
+STAT=$(which stat)
+SUDO=$(which sudo)
+UNAME=$(which uname)
+
+
+# --------------------------------------------------------------------------
+
+# Returns success if this script runs under macOS (Darwin).
+#
+test_macos() {
+    [ "$($UNAME)" = 'Darwin' ]
+}
+
+
+# --------------------------------------------------------------------------
+
+# Returns success if this script runs under the specified shell.
+#
+# Arguments:
+#   $1  basename of shell command
+#
+test_shell() {
+    [ "$($BASENAME $($PS -p $$ -o comm=))" = "$1" ]
+}
+
+
+# --------------------------------------------------------------------------
+
+# Restart this script under Zsh if running in (outdated) Bash in macOS
+test_macos && test_shell 'bash' && exec zsh "$0" "$@"
+
+# Set Bash and Zsh options for compatibility
+if test_shell 'zsh'; then
+    # Split parameters on whitespace
+    setopt SH_WORD_SPLIT
+
+    # Allow '@()', '*()' etc. for parenthesized globbing expressions
+    setopt KSH_GLOB
+
+    # Emulate Bash's regex behaviour
+    setopt BASH_REMATCH
+    setopt KSH_ARRAYS
+
+    # Do not execute EXIT traps on exit from shell functions
+    setopt POSIX_TRAPS
+
+    # Echoes the first active local network IPv4 address (or nothing) to stdout
+    host_ip() {
+        $IFCONFIG -au inet 2>/dev/null | $AWK '$1 == "inet" { if( $2 !~ "127\." ) { print $2; exit } }' || true
+    }
+
+else
+    # Allow '@()', '*()' etc. for parenthesized globbing expressions
+    shopt -s extglob
+
+    # Echoes the first active local network IPv4 address (or nothing) to stdout
+    host_ip() {
+        local RE='src +([[:digit:]\.]+)'
+        [[ $($IP -4 route get 1.0.0.0 2>/dev/null) =~ $RE ]] && echo ${BASH_REMATCH[1]} || true
+    }
+fi
+
+
+# ------------ What follows may not be parseable by macOS Bash -------------
+
+# Shows $USAGE and an optional error message at stdout or stderr
+# and exits with exit code 0 or 1, respectively.
+#
+# Arguments:
+#   $1  (optional) error message: if specified then it is printed, and all
+#       output is sent to stderr; otherwise $USAGE goes to stdout.
+#
+# Environment:
+#   $USAGE   usage information; how to preserve linefeeds in $USAGE:
+#       USAGE=$(cat <<EOT
+#           ... multiline text ...
+#       EOT
+#       )
+#
+usage() {
+    local REDIR=
+    local EXIT_CODE=0
+
+    if [ -n "$1" ]; then
+        $CAT >&2 <<- EOT
+
+*** $1 ***
+EOT
+        REDIR=">&2"
+        EXIT_CODE=1
+    fi
+
+    eval 'echo "$USAGE" '$REDIR
+    exit $EXIT_CODE
+}
+
+
+# --------------------------------------------------------------------------
+
+# Shows a message at stderr and exits with the specified return status (or
+# with 1).
+#
+# Arguments:
+#   $1  error message
+#   $2  (optional) return code, defaults to 1
+#
+err_exit() {
+    echo '*** '"$1"' ***' >&2
+    exit ${2:-1}
+}
+
+
+# --------------------------------------------------------------------------
+
+# Compares two version numbers formatted as x[.y[.z]] and echoes a number
+# <0, ==0 or >0 to stdout if the first one is less than, equal to or greater
+# than the second one, respectively.
+#
+# Returns a non-zero status and does not echo anything if either number is
+# ill-formatted.
+#
+# Arguments:
+#   $1  first version number
+#   $2  second version number
+compare_versions() {
+    local V1="$1".0.0
+    local V2="$2".0.0
+    local RE='([0-9]+)\.([0-9]+)\.([0-9]+)'
+
+    [[ "$V1" =~ $RE ]] || return 1
+    local MAJOR1=${BASH_REMATCH[1]}
+    local MINOR1=${BASH_REMATCH[2]}
+    local REV1=${BASH_REMATCH[3]}
+
+    [[ "$V2" =~ $RE ]] || return 1
+    local DIFF=$(( $MAJOR1 - ${BASH_REMATCH[1]} ))
+    [ $DIFF -ne 0 ] || DIFF=$(( $MINOR1 - ${BASH_REMATCH[2]} ))
+    [ $DIFF -ne 0 ] || DIFF=$(( $REV1 - ${BASH_REMATCH[3]} ))
+    echo $DIFF
+}
+
+
+# --------------------------------------------------------------------------
+
+# If the argument is a path (i.e. if it is not only a basename) then this
+# creates it as a directory if necessary and echoes the absolute path to 
+# stdout. Otherwise, the original argument is echoed.
+#
+# Arguments:
+#   $1  path of a working directory, or a volume name
+#
+# Calls:
+#   is_path
+#   canonicalize
+#
+make_dir() {
+    if is_path "$1"; then
+        mkdir -p "$1"
+        canonicalize "$1"
+    else
+        echo "$1"
+    fi
+}
+
+
+# --------------------------------------------------------------------------
+
+# Returns success iff the argument looks like a path (i.e. if it is not only 
+# a basename).
+#
+# Arguments:
+#   $1  path or basename
+#
+is_path() {
+    [ "$1" != "$($BASENAME "$1")" ]
+}
+
+
+# --------------------------------------------------------------------------
+
+# Canonicalizes a path and echoes it to stdout. This works even if the
+# calling process does not have permission to access the rightmost path
+# component.
+#
+# Arguments:
+#   $1  path to canonicalize
+#
+canonicalize() {
+    (
+        cd "$(dirname "$1")"
+        echo "$(pwd -P)/$($BASENAME "$1")"
+    )
+}
+
+
+# --------------------------------------------------------------------------
+
+# Autocompletes a string and echoes it to stdout. Echoes the original
+# string if autocompletion could not be achieved.
+#
+# Arguments:
+#   $1  string to autocomplete
+#   $2, $3, ...
+#       autocompleted strings
+#
+autocomplete() {
+    local MATCHES=0
+    local COMPLETED
+    local ARG="$1"
+    shift
+    for AC in "$@"; do
+        if [ "${AC##$ARG}" != "$AC" ]; then
+            COMPLETED=$AC
+            MATCHES=$((MATCHES+1))
+        fi
+    done
+
+    # Consider autocompleted only if the abbreviation was unambiguous
+    [ $MATCHES -eq 1 ] && echo "$COMPLETED" || echo "$ARG"
+}
+
+
+# --------------------------------------------------------------------------
+
+# Returns success if the specified container exists.
+#
+# Arguments:
+#   $1  container name
+#
+# Environment:
+#   $LAPP_ENGINE
+test_container() {
+    $LAPP_ENGINE container inspect $1 &>/dev/null
+}
+
+
+# --------------------------------------------------------------------------
+
+# Runs/execs the selected container engine with the given arguments.
+# If LAPP_DEBUG is non-empty then the run command is echoed to stdout,
+# and engine messages sent to stdout and stderr are visible at the
+# console. Otherwise, only stderr is displayed at the console.
+#
+# Arguments:
+#   $1, $2, ...
+#       arguments to be passed to the container engine
+#
+# Environment:
+#   $LAPP_ENGINE
+#   $LAPP_DEBUG
+#
+run_engine() {
+    if [ -n "$LAPP_DEBUG" ]; then
+        echo "$LAPP_ENGINE $@"
+        $LAPP_ENGINE "$@"
+    else
+        $LAPP_ENGINE "$@" >/dev/null
+    fi
+}
+
+exec_engine() {
+    [ -n "$LAPP_DEBUG" ] && echo "$LAPP_ENGINE $@"
+    exec $LAPP_ENGINE "$@"
+}
+
+
+# --------------------------------------------------------------------------
+
+# Autocomplete command
+CMD=$(autocomplete "$1" run stop logs env composer shell)
+
+[ $# -ge 1 ] && shift || true
+OPT_COUNT=$#
+
+# Determine command
+[ -n "$CMD" ] && MSG="Unknown or ambiguous command: '$CMD'" || MSG="Missing command"
+
+case "$CMD" in
+
+    # Run LAPP in a container, optionally with a database in an extra container
+    run)
+        USAGE=$($CAT <<EOT
+
+Usage:
+  $SCRIPT run [option]... [--] [Docker/Podman 'create' option]...
+  $SCRIPT run [-h|--help]
+
+Runs LAPP image 'undecaf/lapp' in a container in Docker or Podman.
+
+Options (default values can be overridden by environment variables):
+
+  --engine=ENGINE, -e ENGINE
+      Container engine to use: 'docker', 'podman' (can be abbreviated) or an 
+      absolute path to the engine executable.
+      Default: \$LAPP_ENGINE, or 'podman' if installed, else 'docker'.
+
+  --name=NAME, -n NAME
+      Container name.
+      Default: \$LAPP_NAME, or 'lapp'.
+
+  --hostname=HOSTNAME, -H HOSTNAME
+      Hostname assigned to the LAPP container and to Apache ServerName and
+      ServerAdmin.
+      Default: \$LAPP_HOSTNAME, or 'lapp.$($HOSTNAME)'.
+
+  --tag=TAG, -T TAG
+      Tag of image to run, consisting of PHP version and build version,
+      e.g. '7.4-1.3' or '8.0-latest'.
+      Default: \$LAPP_TAG, or 'latest', i.e. the latest build for the most recent
+      LAPP version.
+
+  --pull, -u
+      Pulls an up-to-date version of the image from the repository before
+      running it.
+      Default: \$LAPP_PULL, or not set.
+      
+  --www-vol=VOLUME, -v VOLUME
+      Either a volume name to be mapped to the web root directory inside the
+      container, or a working directory path at the host (must contain a '/').
+      Default: \$LAPP_WWW_VOL, or 'lapp-www'.
+ 
+  --www-owner, -o
+      Indicates that the current user should appear as the owner of the web
+      root directory (and its content) at the host.
+      Default: \$LAPP_WWW_OWNER, or not set.
+ 
+  --www-ports=HTTP,HTTPS, -p HTTP,HTTPS
+      Host interfaces (optional) and ports where to publish the HTTP and HTTPS port.
+      If one of the parts is omitted then the respective port will not be published.
+      A leading comma is required if the HTTP part is omitted, e.g. ',127.0.0.1:8443'.
+      Default: \$LAPP_WWW_PORTS, or '127.0.0.1:8080,127.0.0.1:8443'.
+
+  --certfiles=PRIVATE-KEY,CERT, -k PRIVATE-KEY,CERT
+      Private key file and certificate file for HTTPS, in PEM format and located
+      at the host. If not specified then a self-signed certificate will be used
+      for HTTPS connections.
+      Default: \$LAPP_CERTFILES, or not set.
+
+  --pg-vol=VOLUME, -V VOLUME
+      Either a PostgreSQL volume name or a PostgreSQL working directory path at the 
+      host (must contain a '/').
+      Default: \$LAPP_PG_VOL, or 'lapp-pgdata'.
+ 
+  --pg-owner, -O
+      Indicates that the current user should appear as the owner of the PostgreSQL
+      working directory (and its content) at the host.
+      Default: \$LAPP_PG_OWNER, or not set.
+
+  --pg-port=PORT, -P PORT
+      Host interface (optional) and port where to publish the PostgreSQL port.
+      Defaults: \$LAPP_PG_PORT, or '127.0.0.1:5432'.
+
+  --env NAME=VALUE
+      Sets the (initial) value of a container environment variable. Most variables
+      can be changed afterwards by '$SCRIPT env'. This option may appear
+      multiple times.
+      Defaults: \$LAPP_MODE, \$LAPP_PHP_..., \$LAPP_php_...
+ 
+  --logs, -l
+      Streams the log output of the new LAPP instance to the console until 
+      CTRL-C is typed.
+      Default: \$LAPP_LOGS, or not set.
+ 
+  --log-host=HOST[:PORT], -L HOST[:PORT]
+      Sends the log output to the specified HOST and PORT (default: 514),
+      using the BSD syslog protocol (RFC3164).
+      Default: \$LAPP_LOG_HOST, or not set.
+ 
+  --debug, -d
+      If this option is present then Docker/Podman commands and output appear
+      at the console. Otherwise only 'stderr' is displayed.
+      Warning: your database credentials will be visible at the console.
+      Default: \$LAPP_DEBUG, or not set.
+ 
+  --help, -h
+      Displays this text and exits.
+
+Additional options for the Docker/Podman 'create' command can be added after the options
+described above. If necessary, '--' can be used to separate them from the $SCRIPT options.
+ 
+EOT
+        )
+        # No additional options required
+        OPT_COUNT=1
+        ;;
+
+
+    # Stop and remove a LAPP container
+    stop)
+        USAGE=$($CAT <<EOT
+
+Usage:
+  $SCRIPT stop [option]...
+  $SCRIPT stop [-h|--help]
+
+Stops a LAPP container, optionally removes it and unmounts the working
+directories of this container.
+
+Options (default values can be overridden by environment variables):
+
+  --engine=ENGINE, -e ENGINE
+      Container engine being used: 'docker', 'podman' or an absolute path
+      to the engine executable.
+      Default: \$LAPP_ENGINE, or 'podman' if installed, else 'docker'.
+
+  --name=NAME, -n NAME
+      Same container name as specified for 'lapp run'.
+      Default: \$LAPP_NAME, or 'lapp'.
+ 
+  --logs, -l
+      Shows the log output that resulted from this command.
+      Default: \$LAPP_LOGS, or not set.
+ 
+  --debug, -d
+      If this option is present then Docker/Podman commands and output appear
+      at the console. Otherwise only 'stderr' is displayed.
+      Default: \$LAPP_DEBUG, or not set.
+ 
+  --rm, -R
+      Causes the LAPP container to be removed after is was stopped.
+      This can also be used to remove a container that is not running.
+
+  --help, -h
+      Displays this text and exits.
+ 
+EOT
+        )
+        # No additional options required
+        OPT_COUNT=1
+        ;;
+
+
+    # Display the log output of a running LAPP container
+    logs)
+        USAGE=$($CAT <<EOT
+
+Usage:
+  $SCRIPT logs [option]...
+  $SCRIPT logs [-h|--help]
+
+Displays the log output of a running LAPP container.
+
+Options (default values can be overridden by environment variables):
+
+  --engine=ENGINE, -e ENGINE
+      Container engine being used: 'docker', 'podman' or an absolute path
+      to the engine executable.
+      Default: \$LAPP_ENGINE, or 'podman' if installed, else 'docker'.
+
+  --name=NAME, -n NAME
+      Same container name as specified for 'lapp run'.
+      Default: \$LAPP_NAME, or 'lapp'.
+ 
+  --follow, -f
+      Streams the log output to the console until CTRL-C is typed.
+      Default: \$LAPP_FOLLOW, or not set.
+ 
+  --since=TIMESTAMP, -s TIMESTAMP
+      Shows only log lines since a timestamp. This can be a Unix timestamp,
+      a date formatted timestamp, or a Go duration string (e.g. 10m, 1h30m)
+      computed relative to the client machine's time.
+      Default: \$LAPP_SINCE, or not set.
+ 
+  --tail=LINES, -l LINES
+      Shows only that many lines from the end of the log, or all lines
+      if 0.
+      Default: \$LAPP_TAIL, or not set.
+
+  --debug, -d
+      If this option is present then Docker/Podman commands and output appear
+      at the console. Otherwise only 'stderr' is displayed.
+      Default: \$LAPP_DEBUG, or not set.
+
+  --help, -h
+      Displays this text and exits.
+ 
+EOT
+        )
+        # No additional options required
+        OPT_COUNT=1
+        ;;
+
+
+    # Change environment settings in a running LAPP container
+    env)
+        USAGE=$($CAT <<EOT
+
+Usage:
+  $SCRIPT env [option]... [NAME=VALUE]...
+  $SCRIPT env [-h|--help]
+
+Modifies the environment of a running LAPP container. Shows the
+current environment if no NAME=VALUE pairs are given.
+
+Options (default values can be overridden by environment variables):
+
+  --engine=ENGINE, -e ENGINE
+      Container engine being used: 'docker', 'podman' or an absolute path
+      to the engine executable.
+      Default: \$LAPP_ENGINE, or 'podman' if installed, else 'docker'.
+
+  --name=NAME, -n NAME
+      Same container name as specified for 'lapp run'.
+      Default: \$LAPP_NAME, or 'lapp'.
+ 
+  --logs, -l
+      Shows the log output that resulted from this command.
+      Default: \$LAPP_LOGS, or not set.
+ 
+  --debug, -d
+      If this option is present then Docker/Podman commands and output appear
+      at the console. Otherwise only 'stderr' is displayed.
+      Default: \$LAPP_DEBUG, or not set.
+
+  --help, -h
+      Displays this text and exits.
+ 
+EOT
+        )
+        # No additional options required
+        OPT_COUNT=1
+        ;;
+
+
+    # Run Composer in a running LAPP container
+    composer)
+        USAGE=$($CAT <<EOT
+
+Usage:
+  $SCRIPT composer [option]... COMPOSER_CMD [Composer option]...
+  $SCRIPT composer [-h|--help]
+
+Executes a Composer command inside of a running LAPP container.
+
+Options (default values can be overridden by environment variables):
+
+  --engine=ENGINE, -e ENGINE
+      Container engine being used: 'docker', 'podman' or an absolute path
+      to the engine executable.
+      Default: \$LAPP_ENGINE, or 'podman' if installed, else 'docker'.
+
+  --name=NAME, -n NAME
+      Same container name as specified for 'lapp run'.
+      Default: \$LAPP_NAME, or 'lapp'.
+ 
+  --debug, -d
+      If this option is present then Docker/Podman commands and output appear
+      at the console. Otherwise only 'stderr' is displayed.
+      Default: \$LAPP_DEBUG, or not set.
+
+  --help, -h
+      Displays this text and exits.
+ 
+EOT
+        )
+        ;;
+
+
+    # Open an interactive Bash shell in a running LAPP container
+    shell)
+        USAGE=$($CAT <<EOT
+
+Usage:
+  $SCRIPT shell [option]... [shell option]...
+  $SCRIPT shell [-h|--help]
+
+Opens an interactive Bash shell in a running LAPP container.
+
+Options (default values can be overridden by environment variables):
+
+  --engine=ENGINE, -e ENGINE
+      Container engine being used: 'docker', 'podman' or an absolute path
+      to the engine executable.
+      Default: \$LAPP_ENGINE, or 'podman' if installed, else 'docker'.
+
+  --name=NAME, -n NAME
+      Same container name as specified for 'lapp run'.
+      Default: \$LAPP_NAME, or 'lapp'.
+ 
+  --debug, -d
+      If this option is present then Docker/Podman commands and output appear
+      at the console. Otherwise only 'stderr' is displayed.
+      Default: \$LAPP_DEBUG, or not set.
+
+  --help, -h
+      Displays this text and exits.
+ 
+EOT
+        )
+        # No additional options required
+        OPT_COUNT=1
+        ;;
+
+
+    # General help
+    -h|--help)
+        MSG=
+        ;&
+
+
+    # Unknown command
+    *)
+        USAGE=$($CAT <<EOT
+
+Usage:
+  $SCRIPT COMMAND [option]... [argument]...
+ 
+Available commands:
+ 
+  run           Runs LAPP image 'undecaf/lapp' in a container in Docker or
+                Podman.
+ 
+  stop          Stops a running LAPP container.
+
+  logs          Displays the log output of a running LAPP container.
+ 
+  env           Modifies the environment of a running LAPP container.
+
+  composer      Executes a Composer command inside a running LAPP container.
+
+  shell         Opens an interactive Bash shell in a running LAPP container.
+
+  --help, -h    Displays this text and exits. Displays command-specific help if 
+                combined with a command.
+
+Each command can be abbreviated to an unambiguous verb, e.g. '$SCRIPT stop' -> '$SCRIPT st'
+ 
+EOT
+        )
+        usage "$MSG"
+        ;;
+esac
+
+
+# --------------------------------------------------------------------------
+
+# Process command line options
+
+# Default options, overridden by environment variables
+LAPP_ENGINE=${LAPP_ENGINE:-$(which podman)} || LAPP_ENGINE=docker
+LAPP_NAME=${LAPP_NAME:-lapp}
+LAPP_HOSTNAME=${LAPP_HOSTNAME:-lapp.$($HOSTNAME)}
+
+LAPP_TAG=${LAPP_TAG:-latest}
+LAPP_WWW_VOL=${LAPP_WWW_VOL:-lapp-www}
+LAPP_WWW_PORTS=${LAPP_WWW_PORTS:-127.0.0.1:8080,127.0.0.1:8443}
+
+REMOVE_OPTION=
+FOLLOW_OPTION=${LAPP_FOLLOW:+--follow}
+SINCE_OPTION=${LAPP_SINCE:+--since=$LAPP_SINCE}
+TAIL_OPTION=${LAPP_TAIL:+--tail=$LAPP_TAIL}
+
+while [ $# -gt 0 ]; do
+    case $CMD:$1 in
+        # Container engine
+        *:@(-e|--engine))
+            shift
+            ;&
+
+        *:--engine=*)
+            LAPP_ENGINE="${1#--engine=}"  # basename or absolute path of an executable
+            shift
+            ;;
+
+        # Pull (update) image before starting
+        run:@(-u|--pull))
+            LAPP_PULL=on
+            shift
+            ;;
+
+        # Hostname
+        run:@(-H|--hostname))
+            shift
+            ;&
+
+        run:--hostname=*)
+            LAPP_HOSTNAME="${1#--hostname=}"
+            shift
+            ;;
+
+        # Container name
+        @(run|stop|composer|shell|env):@(-n|--name))
+            shift
+            ;&
+
+        @(run|stop|composer|shell|env):--name=*)
+            LAPP_NAME="${1#--name=}"
+            shift
+            ;;
+
+        # Debug container engine commands
+        @(run|stop|logs|composer|shell|env):@(-d|--debug))
+            LAPP_DEBUG=on
+            shift
+            ;;
+
+        # Image tag
+        run:@(-T|--tag))
+            shift
+            ;&
+
+        run:--tag=*)
+            LAPP_TAG="${1#--tag=}"
+            shift
+            ;;
+
+        # Web root volume (volume name or working directory path)
+        run:@(-v|--www-vol))
+            shift
+            ;&
+
+        run:--www-vol=*)
+            LAPP_WWW_VOL="${1#--www-vol=}"
+            shift
+            ;;
+
+        # Web working directory owned by current user
+        run:@(-o|--www-owner))
+            LAPP_WWW_OWNER=on
+            shift
+            ;;
+
+        # Database volume (volume name or working directory path)
+        run:@(-V|--pg-vol))
+            shift
+            ;&
+
+        run:--pg-vol=*)
+            LAPP_PG_VOL="${1#--pg-vol=}"
+            shift
+            ;;
+
+        # Database working directory owned by current user
+        run:@(-O|--pg-owner))
+            LAPP_PG_OWNER=on
+            shift
+            ;;
+
+        # HTTP and HTTPS interfaces and ports
+        run:@(-p|--www-ports))
+            shift
+            ;&
+
+        run:--www-ports=*)
+            LAPP_WWW_PORTS="${1#--www-ports=}"
+            shift
+            ;;
+
+        # Private key file and certificate file
+        run:@(-k|--certfiles))
+            shift
+            ;&
+
+        run:--certfiles=*)
+            LAPP_CERTFILES="${1#--certfiles=}"
+            shift
+            ;;
+
+        # Database port
+        run:@(-P|--pg-port))
+            shift
+            ;&
+
+        run:--pg-port=*)
+            LAPP_PG_PORT="${1#--pg-port=}"
+            shift
+            ;;
+
+        # Container environment setting
+        run:--env)
+            shift
+            ;&
+
+        run:--env=*)
+            ENV="${1#--env=}"
+            RE='^('$IMG_ENV_RE')=(.*)$'
+            [[ "$ENV" =~ $RE ]] || err_exit "Not a valid NAME=VALUE pair: '$ENV'"
+            export LAPP_${BASH_REMATCH[1]}=${BASH_REMATCH[2]}
+            shift
+            ;;
+
+        # Show the log output of this command at the console
+        @(run|stop|env):@(-l|--logs))
+            LAPP_LOGS=on
+            shift
+            ;;
+
+        # Send log output to a BSD syslog host
+        run:@(-L|--log-host))
+            shift
+            ;&
+
+        run:--log-host=*)
+            LAPP_LOG_HOST="${1#--log-host=}"
+            shift
+            ;;
+
+        # Stream log output to console
+        logs:@(-f|--follow))
+            FOLLOW_OPTION='--follow'
+            shift
+            ;;
+
+        # Show only output since some timestamp
+        logs:@(-s|--since))
+            shift
+            ;&
+
+        logs:--since=*)
+            SINCE_OPTION="--since=${1#--since=}"
+            shift
+            ;;
+
+        # Show only a certain number of lines from the end of the log
+        logs:@(-l|--tail))
+            shift
+            ;&
+
+        logs:--tail=*)
+            TAIL_OPTION="--tail=${1#--tail=}"
+            shift
+            ;;
+
+        # Remove container(s) after being stopped
+        stop:@(-R|--rm))
+            REMOVE_OPTION='--rm'
+            shift
+            ;;
+
+        # Help for selected command
+        *:@(-h|--help))
+            usage
+            ;;
+
+        # Separator from container engine options directory
+        *:--)
+            shift
+            break
+            ;;
+
+        # First unknown option, keep remaining options in "$@"
+        *)
+            break
+            ;;
+    esac
+done
+
+# At least one (additional) argument must be present
+[ $OPT_COUNT -eq 0 ] && err_exit 'No argument was found but at least one is required'
+
+
+# --------------------------------------------------------------------------
+
+# Set up the container environment
+ENV_OPTIONS=''
+
+# Determine container engine name
+LAPP_ENGINE=$(autocomplete "$LAPP_ENGINE" docker podman)
+[ -x "$(which $LAPP_ENGINE)" ] || err_exit "Container engine '$LAPP_ENGINE' not found"
+
+LAPP_ENGINE=$(which $LAPP_ENGINE)
+ENGINE_NAME=$($BASENAME $LAPP_ENGINE)
+ENGINE_VERSION=$($LAPP_ENGINE --version)
+
+# Options that differ between container engines
+HOST_IP_ENV=
+case $ENGINE_NAME in
+    docker)
+        SUDO_PREFIX=$SUDO
+        ;;
+
+    podman)
+        # Obtain the first active local network IPv4 address
+        # XDebug will not work if there is no active local IPv4 address
+        HOST_IP=$(host_ip) && HOST_IP_ENV="--env HOST_IP=$HOST_IP"
+        SUDO_PREFIX=
+        ;;
+esac
+
+# Split into HTTP and HTTPS port and interface
+RE='^(([^,]+)?(,(.+)?)?)?$'
+[[ "$LAPP_WWW_PORTS" =~ $RE ]] || err_exit "Invalid option value: '$LAPP_WWW_PORTS'"
+HTTP_PORT=${BASH_REMATCH[2]}
+HTTPS_PORT=${BASH_REMATCH[4]}
+
+HTTP_OPTIONS=
+[ -n "$HTTP_PORT" ] && HTTP_OPTIONS="$HTTP_OPTIONS --publish $HTTP_PORT:80"
+[ -n "$HTTPS_PORT" ] && HTTP_OPTIONS="$HTTP_OPTIONS --publish $HTTPS_PORT:443"
+
+# Split into private key file and certificate file
+RE='^((.+),(.+))?$'
+[[ "$LAPP_CERTFILES" =~ $RE ]] || err_exit "Invalid option value: '$LAPP_CERTFILES'"
+KEY_FILE=${BASH_REMATCH[2]}
+CERT_FILE=${BASH_REMATCH[3]}
+
+# Parse BSD syslog host option
+if [ -n "$LAPP_LOG_HOST" ]; then
+    RE='^([^: ]+)(:([[:digit:]]+))?$'
+    [[ "$LAPP_LOG_HOST" =~ $RE ]] || err_exit "Invalid option value: '$LAPP_LOG_HOST'"
+    LOG_HOST_IP=${BASH_REMATCH[1]}
+    LOG_HOST_PORT=${BASH_REMATCH[3]}
+    LOG_HOST_PORT=${LOG_HOST_PORT:-514}
+
+    ENV_OPTIONS="$ENV_OPTIONS \
+        --env LOG_HOST_IP=$LOG_HOST_IP \
+        --env LOG_HOST_PORT=$LOG_HOST_PORT"
+fi
+
+# Initialize container environment variables, keep the 'LAPP_' prefix
+RE='^(LAPP_('$IMG_ENV_RE'))=(.*)$'
+
+while read -r ENV_VAR; do
+    if [[ "$ENV_VAR" =~ $RE ]]; then
+        ENV_OPTIONS="$ENV_OPTIONS \
+            --env ${BASH_REMATCH[1]}=${BASH_REMATCH[3]}"
+    fi
+done <<< "$($PRINTENV)"
+
+# Database settings
+if [ -n "$LAPP_PG_PASSWORD" ]; then
+    ENV_OPTIONS="$ENV_OPTIONS \
+        --env PG_PASSWORD=$LAPP_PG_PASSWORD"
+fi
+
+DB_CONTAINER_PORT=5432
+LAPP_PG_VOL=${LAPP_PG_VOL:-lapp-pgdata}
+LAPP_PG_PORT=${LAPP_PG_PORT:-127.0.0.1:$DB_CONTAINER_PORT}
+DB_PORT_OPTION="--publish $LAPP_PG_PORT:$DB_CONTAINER_PORT"
+
+# Process working directory ownership
+if [ -n "$LAPP_WWW_OWNER" ]; then
+    is_path "$LAPP_WWW_VOL" || err_exit "Cannot own volume '$LAPP_WWW_VOL': not bind-mounted"
+    ENV_OPTIONS="$ENV_OPTIONS --env LAPP_WWW_OWNER=$LAPP_WWW_OWNER"
+fi
+
+if [ -n "$LAPP_PG_OWNER" ]; then
+    is_path "$LAPP_PG_VOL" || err_exit "Cannot own volume '$LAPP_PG_VOL': not bind-mounted"
+    ENV_OPTIONS="$ENV_OPTIONS --env LAPP_PG_OWNER=$LAPP_PG_OWNER"
+fi
+
+if [ -n "$LAPP_WWW_OWNER" -o -n "$LAPP_PG_OWNER" ]; then
+    RE='\bpodman\b'
+    if [[ "$LAPP_ENGINE" =~ $RE ]]; then
+        # Podman containers need FUSE to control ownership
+        ENV_OPTIONS="$ENV_OPTIONS --cap-add=SYS_ADMIN --device /dev/fuse"
+    fi
+fi
+
+
+# --------------------------------------------------------------------------
+
+# Execute command
+
+case "$CMD" in
+
+    run)
+        # Verify that the container does not exist yet
+        test_container "$LAPP_NAME" && \
+            err_exit "Cannot run container '$LAPP_NAME': it already exists"$' ***\n*** '"To remove it, enter '$0 stop -e '$LAPP_ENGINE' -n '$LAPP_NAME' --rm'"
+
+        # Roll back if command terminates prematurely
+        trap "echo $'\n*** Command failed or interrupted, rolling back ***'; $0 stop -e '$LAPP_ENGINE' -n '$LAPP_NAME' --rm; exit 1" EXIT
+        set -e
+
+        # Update image if requested
+        REPO=$IMG_REPO_SLUG${LAPP_TAG:+:$LAPP_TAG}
+        if [ -n "$LAPP_PULL" ]; then
+            echo '*** '"Pulling image '$REPO'"' ***'
+            run_engine pull $REPO
+        fi
+
+        # Create working directories if necessary and make the paths absolute
+        LAPP_WWW_VOL=$(make_dir "$LAPP_WWW_VOL")
+        LAPP_PG_VOL=$(make_dir "$LAPP_PG_VOL")
+
+        # Create the LAPP container
+        echo '*** '"Creating container '$LAPP_NAME'"' ***'
+        run_engine create \
+            --name "$LAPP_NAME" \
+            --hostname "$LAPP_HOSTNAME" \
+            --ulimit $IMG_FILE_LIMIT \
+            --volume "$LAPP_WWW_VOL:$IMG_WWW_ROOT" \
+            --volume "$LAPP_PG_VOL:$IMG_PG_DATA" \
+            $HTTP_OPTIONS \
+            $DB_PORT_OPTION \
+            $ENV_OPTIONS \
+            $HOST_IP_ENV \
+            "$@" \
+            $REPO
+
+        # Copy certificate files, if any
+        if [ -n "$LAPP_CERTFILES" ]; then
+            run_engine cp "$KEY_FILE" "$LAPP_NAME":${IMG_CERT_BASENAME}.key
+            run_engine cp "$CERT_FILE" "$LAPP_NAME":${IMG_CERT_BASENAME}.pem
+        fi
+        echo '*** '"Container '$LAPP_NAME' created"' ***'
+
+        # Start the container
+        run_engine start "$LAPP_NAME"
+        echo '*** '"Container '$LAPP_NAME' started"' ***'
+
+        trap - EXIT
+
+        # Eventually show logs
+        [ -n "$LAPP_LOGS" ] && exec_engine logs --follow "$LAPP_NAME" || true
+        ;;
+
+
+    stop)
+        echo '*** '"Stopping container '$LAPP_NAME'"' ***'
+
+        # Collect volume names from container
+        # Note: prior to Podman v1.4.3, the volume name was contained in property .Source, not .Name
+        [ $(compare_versions "$ENGINE_VERSION" '1.4.3') -ge 0 ] && NAME_PROP='.Name' || NAME_PROP='.Source'
+        VOLNAMES=$($LAPP_ENGINE container inspect \
+            --format='{{range .Mounts}}{{if eq .Destination "'$IMG_WWW_ROOT'" "'$IMG_PG_DATA'"}}{{printf "%s " '$NAME_PROP'}}{{end}}{{end}}' \
+            "$LAPP_NAME" 2>/dev/null)
+
+        # Start showing the log if so requested
+        if [ -n "$LAPP_LOGS" ]; then
+            CMD_START=$(date -u +%FT%TZ)
+            $LAPP_ENGINE logs --follow --since $CMD_START "$LAPP_NAME" &
+            LOGS_PID=$!
+        else
+            LOGS_PID=
+        fi
+
+        # Stop the container
+        if run_engine stop "$LAPP_NAME"; then
+            echo '*** '"Container '$LAPP_NAME' stopped"' ***'
+        fi
+
+        # Kill the process showing the log and suppress the termination message
+        [ -n "$LOGS_PID" ] && $KILL $LOGS_PID 2>/dev/null && wait $LOGS_PID 2>/dev/null || true
+
+        # Remove the container if so requested
+        [ -n "$REMOVE_OPTION" ] && run_engine container rm "$LAPP_NAME" || true
+
+        # Wait until the container was removed eventually
+        $SLEEP 1
+        $LAPP_ENGINE container inspect "$LAPP_NAME" &>/dev/null || echo '*** '"Container '$LAPP_NAME' removed"' ***'
+        ;;
+
+
+    logs)
+        exec_engine logs $FOLLOW_OPTION $SINCE_OPTION $TAIL_OPTION "$LAPP_NAME"
+        ;;
+
+
+    env)
+        [ -z "$LAPP_LOGS" ] && exec_engine exec "$LAPP_NAME" setenv $HOST_IP_ENV "$@"
+
+        CMD_START=$(date -u +%FT%TZ)
+        run_engine exec "$LAPP_NAME" setenv $HOST_IP_ENV "$@"
+        exec_engine logs --since $CMD_START "$LAPP_NAME"
+        ;;
+
+
+    composer)
+        exec_engine exec "$LAPP_NAME" composer "$@"
+        ;;
+
+
+    shell)
+        exec_engine exec -it "$LAPP_NAME" /bin/bash "$@"
+        ;;
+
+    *)
+        err_exit "Unknown or ambiguous command: '$CMD'"
+        ;;
+esac

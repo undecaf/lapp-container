@@ -1,0 +1,10 @@
+.gitignore
+.vscode
+.travis*
+local
+lapp
+lapp-*
+snakeoil*
+README.md
+COPYING
+TODO

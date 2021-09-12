@@ -1,0 +1,7 @@
+/.vscode/
+/local/
+/runtime-files/var/
+/lapp-*/
+/snakeoil*
+/tmp*
+TODO
