@@ -1,0 +1,14 @@
+Define VHOST_NAME vhost
+Define VHOST_ROOT ${WWW_ROOT}/${VHOST_NAME}
+
+<VirtualHost *:80>
+    ServerName ${VHOST_NAME}.${HOSTNAME}
+    DocumentRoot ${VHOST_ROOT}
+
+    <Directory ${VHOST_ROOT} >
+        Options -Indexes +FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+
