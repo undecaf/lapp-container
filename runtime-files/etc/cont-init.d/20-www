@@ -1,8 +1,8 @@
 #!/bin/bash
 
 #
-# Sets up $WWW_ROOT as a volume owned by $WWW_OWNER
-# =================================================
+# Sets up $WWW_ROOT as a volume owned by $LAPP_WWW_OWNER
+# ======================================================
 #
 
 set -e
@@ -14,6 +14,6 @@ set -e
 load_env
 
 # Set up $WWW_ROOT as a volume (bind-mounted or unbound)
-setup_volume $WWW_ROOT $APACHE_USER "$WWW_OWNER"
+setup_volume $WWW_ROOT $APACHE_USER "$LAPP_WWW_OWNER"
 
 log_info "LAPP container image tags: $DEPLOY_TAGS (created on $(date --reference ${WWW_ROOT} --rfc-2822))"

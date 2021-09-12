@@ -14,7 +14,7 @@ set -e
 load_env
 
 # Set up $PG_DATA as a volume (bind-mounted or unbound)
-setup_volume $PG_DATA $PG_USER "$PG_OWNER"
+setup_volume $PG_DATA $PG_USER "$LAPP_PG_OWNER"
 chmod 700 $PG_DATA
 
 mkdir -p $PG_RUN
@@ -35,7 +35,6 @@ if [ ! -f $PG_DATA/PG_VERSION ]; then
     echo "$PG_PASSWORD" >$PWFILE
     su-exec $PG_USER \
     initdb --pgdata=$PG_DATA --auth=md5 --username=$PG_USER --pwfile=$PWFILE
-    log_info 'initdb succeeded'
 
     # Allow external IPv4 and IPv6 connections
     cat >>$PG_DATA/pg_hba.conf <<EOT
