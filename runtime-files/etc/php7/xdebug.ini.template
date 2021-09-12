@@ -1,8 +1,8 @@
 # Enables XDebug, to be preprocessed by envsubst
 zend_extension=xdebug.so
-xdebug.remote_enable=1
-xdebug.remote_host=$REMOTE_HOST
-xdebug.remote_autostart=1
-xdebug.remote_connect_back=$REMOTE_CONNECT_BACK
-xdebug.remote_log=$APACHE_HOME/xdebug.log
+xdebug.mode=debug
+xdebug.start_with_request=yes
+xdebug.client_host=$REMOTE_HOST
+xdebug.discover_client_host=$REMOTE_CONNECT_BACK
+xdebug.log=$APACHE_HOME/xdebug.log
 xdebug.max_nesting_level=400
