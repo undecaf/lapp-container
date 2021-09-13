@@ -26,7 +26,6 @@
 IMG_REPO_SLUG=localhost/undecaf/lapp
 IMG_WWW_ROOT=/var/www/localhost
 IMG_PG_DATA=/var/lib/postgresql/data
-IMG_CERT_BASENAME=/etc/ssl/apache2/custom
 IMG_FILE_LIMIT='nofile=10000:15000'
 IMG_ENV_RE='TIMEZONE|LANG|MODE|PHP_.+'
 
@@ -377,12 +376,6 @@ Options (default values can be overridden by environment variables):
       If one of the parts is omitted then the respective port will not be published.
       A leading comma is required if the HTTP part is omitted, e.g. ',127.0.0.1:8443'.
       Default: \$LAPP_WWW_PORTS, or '127.0.0.1:8080,127.0.0.1:8443'.
-
-  --certfiles=PRIVATE-KEY,CERT, -k PRIVATE-KEY,CERT
-      Private key file and certificate file for HTTPS, in PEM format and located
-      at the host. If not specified then a self-signed certificate will be used
-      for HTTPS connections.
-      Default: \$LAPP_CERTFILES, or not set.
 
   --pg-vol=VOLUME, -V VOLUME
       Either a PostgreSQL volume name or a PostgreSQL working directory path at the 
@@ -794,16 +787,6 @@ while [ $# -gt 0 ]; do
             shift
             ;;
 
-        # Private key file and certificate file
-        run:@(-k|--certfiles))
-            shift
-            ;&
-
-        run:--certfiles=*)
-            LAPP_CERTFILES="${1#--certfiles=}"
-            shift
-            ;;
-
         # Database port
         run:@(-P|--pg-port))
             shift
@@ -935,12 +918,6 @@ HTTP_OPTIONS=
 [ -n "$HTTP_PORT" ] && HTTP_OPTIONS="$HTTP_OPTIONS --publish $HTTP_PORT:80"
 [ -n "$HTTPS_PORT" ] && HTTP_OPTIONS="$HTTP_OPTIONS --publish $HTTPS_PORT:443"
 
-# Split into private key file and certificate file
-RE='^((.+),(.+))?$'
-[[ "$LAPP_CERTFILES" =~ $RE ]] || err_exit "Invalid option value: '$LAPP_CERTFILES'"
-KEY_FILE=${BASH_REMATCH[2]}
-CERT_FILE=${BASH_REMATCH[3]}
-
 # Parse BSD syslog host option
 if [ -n "$LAPP_LOG_HOST" ]; then
     RE='^([^: ]+)(:([[:digit:]]+))?$'
@@ -1035,12 +1012,6 @@ case "$CMD" in
             $HOST_IP_ENV \
             "$@" \
             $REPO
-
-        # Copy certificate files, if any
-        if [ -n "$LAPP_CERTFILES" ]; then
-            run_engine cp "$KEY_FILE" "$LAPP_NAME":${IMG_CERT_BASENAME}.key
-            run_engine cp "$CERT_FILE" "$LAPP_NAME":${IMG_CERT_BASENAME}.pem
-        fi
         echo '*** '"Container '$LAPP_NAME' created"' ***'
 
         # Start the container

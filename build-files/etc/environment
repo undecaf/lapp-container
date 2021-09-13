@@ -12,7 +12,6 @@ export LOGS_BASE=/var/log
 export APACHE_USER=apache
 export APACHE_VHOSTS=$WWW_ROOT/.vhosts
 export APACHE_CERT=$WWW_ROOT/.ssl/server
-export APACHE_CUSTOM_CERT=/etc/ssl/apache2/custom
 export APACHE_LOGS=$LOGS_BASE/apache2
 
 export DOCROOT=$WWW_ROOT/public
