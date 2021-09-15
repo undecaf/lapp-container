@@ -34,7 +34,7 @@ if [ ! -f $PG_DATA/PG_VERSION ]; then
 
     echo "$PG_PASSWORD" >$PWFILE
     su-exec $PG_USER \
-    initdb --pgdata=$PG_DATA --auth=md5 --username=$PG_USER --pwfile=$PWFILE
+    initdb --pgdata=$PG_DATA --auth=md5 --username=$PG_USER --pwfile=$PWFILE | log_info
 
     # Allow external IPv4 and IPv6 connections
     cat >>$PG_DATA/pg_hba.conf <<EOT

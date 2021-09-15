@@ -34,6 +34,7 @@ log_info() {
         while IFS= read -r; do
             test -n "$REPLY" && logger -t $PROGRAM -p $LOG_INFO "$REPLY"
         done
+        true
     fi
 }
 
