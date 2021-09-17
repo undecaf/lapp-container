@@ -14,6 +14,6 @@ set -e
 load_env
 
 # Set up $WWW_ROOT as a volume (bind-mounted or unbound)
-setup_volume $WWW_ROOT $APACHE_USER "$LAPP_WWW_OWNER"
+setup_volume $WWW_ROOT $APACHE_USER "$LAPP_WWW_OWNER" $WWW_ROOT_GZ
 
 log_info "LAPP container image tags: $DEPLOY_TAGS (created on $(date --reference ${WWW_ROOT} --rfc-2822))"
