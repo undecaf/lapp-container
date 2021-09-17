@@ -45,7 +45,8 @@ log_info() {
 # syslog-ng is not running. Exits with the specified return status.
 #
 # Arguments:
-#   $1    return status (optional, defaults to 1)
+#   $1    message
+#   $2    return status (optional, defaults to 1)
 #
 err_exit() {
     if [ -n "$(pidof syslog-ng)" ]; then

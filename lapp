@@ -1037,7 +1037,7 @@ case "$CMD" in
 
         # Start showing the log if so requested
         if [ -n "$LAPP_LOGS" ]; then
-            CMD_START=$(date -u +%FT%TZ)
+            CMD_START=$($LAPP_ENGINE exec "$LAPP_NAME" date -u -Is)
             $LAPP_ENGINE logs --follow --since $CMD_START "$LAPP_NAME" &
             LOGS_PID=$!
         else

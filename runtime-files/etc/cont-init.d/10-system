@@ -49,7 +49,7 @@ fi
 
 # Build the configuration file (escaping '$' needs an ugly hack)
 mkdir -p /etc/syslog-ng
-D='$' envsubst >/etc/syslog-ng/www.conf <<EOT
+D='$' envsubst >/etc/syslog-ng/syslog-ng.conf <<EOT
 @version:3.30
 
 options {
@@ -92,7 +92,7 @@ log {
 };
 EOT
 
-syslog-ng -f /etc/syslog-ng/www.conf
+syslog-ng -f /etc/syslog-ng/syslog-ng.conf
 
 
 # Show OS version
