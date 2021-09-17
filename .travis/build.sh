@@ -8,6 +8,8 @@ export ENGINE=${ENGINE:-docker}
 
 
 echo $'\n*************** '"Building README snapshot"
+set -x
++RTS -K256k -RTS
 
 # Build a self-contained HTML snapshot of the current README.md
 # TODO: Move this to buildfiles/usr/local/bin/build as soon as pandoc is in Alpine/main
