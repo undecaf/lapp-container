@@ -8,7 +8,7 @@ ARG DEPLOY_TAGS=exp
 
 # External package versions (update as appropriate)
 ARG BINDFS_VER=1.15.1
-ARG S6_OVERLAY_VER=2.2.0.3
+ARG S6_OVERLAY_VER=2.0.0.1
 
 # Build _constants_ (do not change)
 ARG APACHE_HOME=/var/www
