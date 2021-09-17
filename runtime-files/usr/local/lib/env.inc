@@ -31,17 +31,23 @@ set_var() {
 # --------------------------------------------------------------------------
 
 # Replaces the runtime environment with the current environment plus
-# the specified NAME=VALUE pairs, removing the leading 'T3_' from 
+# the specified NAME=VALUE pairs. COntainer environment variables are
+# included only if $1 is non-empty; the leading 'LAPP_' is removed from 
 # container environment variable names.
 #
 # Arguments:
-#   $1, $2, ...  (optional) NAME=VALUE pairs
+#   $1           if non-empty then container environment variables
+#                (whose names start with 'LAPP_') are included, else
+#                they are ignored
+#   $2, $3, ...  (optional) NAME=VALUE pairs
 #
 save_env() {
     local RE_CONT_ENV='^(LAPP_('${RE_CONT_ENV_VARS}'))=(.*)$'
     local RE_OTHER_ENV='^([^=]+)=(.*)$'
     local PAIRS
     local PAIR
+    local INCLUDE_CONT_ENV_VARS="$1"
+    shift
 
     # Get the current environment and preserve embedded spaces
     IFS=$'\n'
@@ -56,8 +62,8 @@ save_env() {
 
     for PAIR in "${PAIRS[@]}"; do
         if [[ $PAIR =~ ${RE_CONT_ENV} ]]; then
-            # Set a container environment variable
-            echo "${BASH_REMATCH[3]}" >${ENV_DIR}/${BASH_REMATCH[2]}
+            # Set a container environment variable if requested
+            test -n "$INCLUDE_CONT_ENV_VARS" && echo "${BASH_REMATCH[3]}" >${ENV_DIR}/${BASH_REMATCH[2]} || true
         elif [[ $PAIR =~ ${RE_OTHER_ENV} ]]; then
             # Set a plain environment variable
             echo "${BASH_REMATCH[2]}" >${ENV_DIR}/${BASH_REMATCH[1]}
@@ -75,12 +81,12 @@ save_env() {
 #
 load_env() {
     # Elegant but outputs several extra 'declare -x ...' to stdout which I am unable to suppress
-    # . <(/bin/s6-envdir ${ENV_DIR} /bin/sh -c 'export')
+    . <(/bin/s6-envdir ${ENV_DIR} /bin/sh -c 'export')
 
     # Clumsy but working
-    for NAME in ${ENV_DIR}/*; do
-        if [ -f "${NAME}" ]; then
-            export $(basename ${NAME})="$(< ${NAME})"
-        fi
-    done
+#    for NAME in ${ENV_DIR}/*; do
+#        if [ -f "${NAME}" ]; then
+#            export $(basename ${NAME})="$(< ${NAME})"
+#        fi
+#    done
 }

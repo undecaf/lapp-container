@@ -16,21 +16,24 @@ load_env
 # Select developer/XDebug/production mode, accept abbreviations and ignore case
 while true; do
     if [[ -n $MODE && dev == ${MODE,,}* ]]; then
-        log_info "Apache in developer mode"
+        log_info 'Apache/PHP in developer mode'
+        set_var MODE dev
         EXT=dev
         XDEBUG=
         break
     fi
 
     if [[ -n $MODE && xdebug == ${MODE,,}* ]]; then
-        log_info "Apache in developer mode with XDebug support"
+        log_info 'Apache/PHP in developer mode with XDebug support'
+        set_var MODE xdebug
         EXT=dev
         XDEBUG=y
         break
     fi
 
     if [[ -z $MODE || prod == ${MODE,,}* ]]; then
-        log_info "Apache in production mode"
+        log_info 'Apache/PHP in production mode'
+        set_var MODE prod
         EXT=prod
         XDEBUG=
         break
@@ -39,6 +42,7 @@ while true; do
     err_exit "Unknown mode: '$MODE'"
 done
 
+# Update the Apache/PHP configuration
 ln -sf /etc/apache2/conf.d/mode.conf.${EXT} /etc/apache2/conf.d/zz_mode.conf
 ln -sf /etc/php7/mode.${EXT}.template /etc/php7/conf.d/zz_50_mode.ini
 
@@ -65,7 +69,7 @@ if [ -n "$XDEBUG" ]; then
 	log_info "XDebug enabled"
     while read -r LINE; do
         log_info "php.ini XDebug: $LINE"
-    done < <(grep -E '^xdebug\.remote_(host|connect_back)=' /etc/php7/conf.d/xdebug.ini)
+    done < <(grep -E '^xdebug\.(discover_)?client_host=' /etc/php7/conf.d/xdebug.ini)
 
 else
 	truncate -s 0 /etc/php7/conf.d/xdebug.ini

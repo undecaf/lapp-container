@@ -14,7 +14,7 @@ set -e
 
 # Copy the container environment to the runtime environment,
 # removing the leading 'LAPP_' from variable names
-save_env
+save_env true
 
 # Load the runtime environment
 load_env
@@ -99,7 +99,7 @@ syslog-ng -f /etc/syslog-ng/www.conf
 log_info "Alpine Linux $(cat /etc/alpine-release)"
 
 # Show locale
-log_info "Locale: $LAPP_LANG"
+log_info "Locale: $LANG"
 
 # Show timezone
 test -n "$LAPP_TIMEZONE" && log_info "Timezone: $LAPP_TIMEZONE ($(date +%Z))" || log_info "No timezone set ($(date +%Z))"
