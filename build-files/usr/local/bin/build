@@ -140,6 +140,7 @@ apk add \
 	php7-pdo_sqlite \
 	php7-pecl-apcu \
 	php7-pecl-igbinary \
+	php7-pecl-imagick \
 	php7-posix \
 	php7-redis \
 	php7-session \
