@@ -80,13 +80,5 @@ save_env() {
 # Exports the saved runtime environment variables into the current script.
 #
 load_env() {
-    # Elegant but outputs several extra 'declare -x ...' to stdout which I am unable to suppress
     . <(/bin/s6-envdir ${ENV_DIR} /bin/sh -c 'export')
-
-    # Clumsy but working
-#    for NAME in ${ENV_DIR}/*; do
-#        if [ -f "${NAME}" ]; then
-#            export $(basename ${NAME})="$(< ${NAME})"
-#        fi
-#    done
 }
