@@ -9,7 +9,6 @@ export ENGINE=${ENGINE:-docker}
 
 echo $'\n*************** '"Building README snapshot"
 set -x
-+RTS -K256k -RTS
 
 # Build a self-contained HTML snapshot of the current README.md
 # TODO: Move this to buildfiles/usr/local/bin/build as soon as pandoc is in Alpine/main
@@ -18,9 +17,11 @@ STYLE_URLS=$(curl --silent https://github.com/$TRAVIS_REPO_SLUG/ \
   | grep -o -E 'http[^"]+')
 
 STYLES=$(mktemp -q)
-echo '<style>' >$STYLES
-curl --silent $STYLE_URLS >>$STYLES
-echo '</style>' >>$STYLES
+if false; then
+  echo '<style>' >$STYLES
+  curl --silent $STYLE_URLS >>$STYLES
+  echo '</style>' >>$STYLES
+fi
 
 BEFORE_BODY=$(mktemp -q)
 echo '<div class="Box-body p-4"><article class="markdown-body entry-content container-lg" itemprop="text">' >$BEFORE_BODY
