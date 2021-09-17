@@ -13,7 +13,7 @@ ARG S6_OVERLAY_VER=2.2.0.3
 # Build _constants_ (do not change)
 ARG APACHE_HOME=/var/www
 ARG WWW_ROOT=${APACHE_HOME}/localhost
-ARG PG_ROOT=/var/lib/postgresql/data
+ARG PG_ROOT=/var/lib/postgresql
 
 # Build-time proxy settings (not persisted in the image)
 ARG http_proxy=''
@@ -34,9 +34,9 @@ LABEL \
 COPY build-files /
 RUN /usr/local/bin/build
 
-# Copy runtime files
+# Copy runtime files separately to save time on rebuilds if only the runtime was modified
 COPY runtime-files /
-RUN /usr/local/bin/cleanup
+RUN /usr/local/bin/configure
 
 VOLUME ${WWW_ROOT} ${PG_ROOT}
 

@@ -1,0 +1,35 @@
+#!/bin/sh
+
+#
+# Configures the platform 
+# =======================
+#
+
+set -e
+
+. /usr/local/lib/proxy.inc
+
+# Show what is being done
+echo $'\n*************** Configuring the image'
+
+# Set up the runtime environment
+. /etc/environment
+
+# Remove proxy certificates
+remove_proxy_certs
+
+# Make executables executable
+chmod -R 755 /usr/local/bin
+
+# Put everything at and below $WWW_ROOT into an archive since this
+# directory may become the mount point of a bind mount at runtime
+tar -czf $WWW_ROOT_GZ -C $WWW_ROOT .
+
+# Clean up
+rm -rf $WWW_ROOT/* $WWW_ROOT/.[!.]*
+
+# Leave a marker in $WWW_ROOT so that bind mounts can be detected
+touch $WWW_ROOT/$UNBOUND_MARKER
+
+# Remove this script (must be the last command in this file)
+rm -rf $0

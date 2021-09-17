@@ -10,7 +10,7 @@ set -e
 . /usr/local/lib/proxy.inc
 
 # Show what is being built
-echo $'\n*************** '"Building LAPP container image tags: $DEPLOY_TAGS, commit: $COMMIT"
+echo $'\n*************** '"Building LAPP container image, tags: $DEPLOY_TAGS, commit: $COMMIT"
 
 # Prepend the build arguments and constants to /etc/environment
 E=$(mktemp)
@@ -165,9 +165,6 @@ curl -s -S https://getcomposer.org/installer | php
 mv composer.phar /usr/local/bin/
 chmod 755 /etc/php7
 
-mkdir -p $APACHE_HOME/.composer
-chown $APACHE_USER: $APACHE_HOME/.composer
-
 # Move document root to $DOCROOT, remove unused directories
 mkdir -p $WWW_ROOT $DOCROOT
 sed -i "s#/var/www/localhost/htdocs#$DOCROOT#" /etc/apache2/httpd.conf
@@ -176,9 +173,6 @@ rm -rf $WWW_ROOT/htdocs $WWW_ROOT/cgi-bin
 # Make everything in $APACHE_HOME accessible by Apache
 find $APACHE_HOME -type d -exec chmod 755 {} \;
 chown -R $APACHE_USER: $APACHE_HOME
-
-# Leave a marker in $WWW_ROOT so that bind mounts can be detected
-touch $WWW_ROOT/$UNBOUND_MARKER
 
 # Install database
 apk add \

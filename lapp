@@ -23,9 +23,9 @@
 #
 
 # Constants
-IMG_REPO_SLUG=localhost/undecaf/lapp
+IMG_REPO_SLUG=undecaf/lapp-container
 IMG_WWW_ROOT=/var/www/localhost
-IMG_PG_DATA=/var/lib/postgresql/data
+IMG_PG_ROOT=/var/lib/postgresql
 IMG_FILE_LIMIT='nofile=10000:15000'
 IMG_ENV_RE='TIMEZONE|LANG|MODE|PHP_.+'
 
@@ -431,7 +431,7 @@ EOT
         USAGE=$($CAT <<EOT
 
 Usage:
-  $SCRIPT stop [option]...
+  $SCRIPT stop [option]... [--] [Docker/Podman 'stop' option]...
   $SCRIPT stop [-h|--help]
 
 Stops a LAPP container, optionally removes it and unmounts the working
@@ -1005,7 +1005,7 @@ case "$CMD" in
             --hostname "$LAPP_HOSTNAME" \
             --ulimit $IMG_FILE_LIMIT \
             --volume "$LAPP_WWW_VOL:$IMG_WWW_ROOT" \
-            --volume "$LAPP_PG_VOL:$IMG_PG_DATA" \
+            --volume "$LAPP_PG_VOL:$IMG_PG_ROOT" \
             $HTTP_OPTIONS \
             $DB_PORT_OPTION \
             $ENV_OPTIONS \
@@ -1032,7 +1032,7 @@ case "$CMD" in
         # Note: prior to Podman v1.4.3, the volume name was contained in property .Source, not .Name
         [ $(compare_versions "$ENGINE_VERSION" '1.4.3') -ge 0 ] && NAME_PROP='.Name' || NAME_PROP='.Source'
         VOLNAMES=$($LAPP_ENGINE container inspect \
-            --format='{{range .Mounts}}{{if eq .Destination "'$IMG_WWW_ROOT'" "'$IMG_PG_DATA'"}}{{printf "%s " '$NAME_PROP'}}{{end}}{{end}}' \
+            --format='{{range .Mounts}}{{if eq .Destination "'$IMG_WWW_ROOT'" "'$IMG_PG_ROOT'"}}{{printf "%s " '$NAME_PROP'}}{{end}}{{end}}' \
             "$LAPP_NAME" 2>/dev/null)
 
         # Start showing the log if so requested
@@ -1045,7 +1045,7 @@ case "$CMD" in
         fi
 
         # Stop the container
-        if run_engine stop "$LAPP_NAME"; then
+        if run_engine stop "$LAPP_NAME" "$@"; then
             echo '*** '"Container '$LAPP_NAME' stopped"' ***'
         fi
 
@@ -1069,7 +1069,7 @@ case "$CMD" in
     env)
         [ -z "$LAPP_LOGS" ] && exec_engine exec "$LAPP_NAME" setenv $HOST_IP_ENV "$@"
 
-        CMD_START=$(date -u +%FT%TZ)
+        CMD_START=$($LAPP_ENGINE exec "$LAPP_NAME" date -u -Is)
         run_engine exec "$LAPP_NAME" setenv $HOST_IP_ENV "$@"
         exec_engine logs --since $CMD_START "$LAPP_NAME"
         ;;
