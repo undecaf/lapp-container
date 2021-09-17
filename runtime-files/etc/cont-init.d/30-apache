@@ -12,7 +12,7 @@
 #   $1  'issuer' or 'subject'
 #
 cert_info() {
-    openssl x509 -in $APACHE_CERT.pem -inform PEM -noout -$1 | awk -F ' = ' '{ print $2 }'
+    openssl x509 -in $DEFAULT_CERT.pem -inform PEM -noout -$1 | awk -F ' = ' '{ print $2 }'
 }
 
 
@@ -43,30 +43,30 @@ sed -r -i -e 's/^\s*(Error|Custom)Log\s/#\0/' /etc/apache2/httpd.conf
 # Disable the default SSL configuration
 rm -f /etc/apache2/conf.d/ssl.conf
 
-# Create a self-signed certificate for $HOSTNAME unless one already exists
-mkdir -p $(dirname $APACHE_CERT)
-if [ -f $APACHE_CERT.key -a -f $APACHE_CERT.pem ] && [ "$(cert_info 'subject')" = "$HOSTNAME" ]; then
+# Create a self-signed certificate for the default vHost at $HOSTNAME unless one already exists
+mkdir -p $(dirname $DEFAULT_CERT)
+if [ -f $DEFAULT_CERT.key -a -f $DEFAULT_CERT.pem ] && [ "$(cert_info 'subject')" = "$HOSTNAME" ]; then
     log_info "Using existing SSL certificate, CN=$HOSTNAME"
 
 else
     # No certificate found that matches the current $HOSTNAME
-    # Create certificate
+    # Create such a certificate
     openssl genrsa -out \
-        $APACHE_CERT.key 2048 \
+        $DEFAULT_CERT.key 2048 \
         2>/dev/null
     openssl req -new -sha256 \
-        -out $APACHE_CERT.csr \
-        -key $APACHE_CERT.key \
+        -out $DEFAULT_CERT.csr \
+        -key $DEFAULT_CERT.key \
         -subj "/CN=$HOSTNAME" \
         2>/dev/null
     openssl x509 -req -days 3653 \
-        -in $APACHE_CERT.csr \
-        -signkey $APACHE_CERT.key \
-        -out $APACHE_CERT.pem -outform PEM \
+        -in $DEFAULT_CERT.csr \
+        -signkey $DEFAULT_CERT.key \
+        -out $DEFAULT_CERT.pem -outform PEM \
         2>/dev/null
-    rm $APACHE_CERT.csr
+    rm $DEFAULT_CERT.csr
 
-    chown -R $APACHE_USER: $(dirname $APACHE_CERT)
+    chown -R $APACHE_USER: $(dirname $DEFAULT_CERT)
     log_info "Created a self-signed SSL certificate, CN=$HOSTNAME"
 fi
 

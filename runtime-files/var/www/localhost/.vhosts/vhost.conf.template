@@ -1,14 +1,24 @@
 Define VHOST_NAME vhost
 Define VHOST_ROOT ${WWW_ROOT}/${VHOST_NAME}
+Define SERVER_NAME ${VHOST_NAME}.${HOSTNAME}
+Define CERT_FILE ${APACHE_CERTS}/${VHOST_NAME}
+
+<Directory ${VHOST_ROOT} >
+    Options -Indexes +FollowSymLinks
+    AllowOverride All
+    Require all granted
+</Directory>
 
 <VirtualHost *:80>
-    ServerName ${VHOST_NAME}.${HOSTNAME}
+    ServerName ${SERVER_NAME}
     DocumentRoot ${VHOST_ROOT}
-
-    <Directory ${VHOST_ROOT} >
-        Options -Indexes +FollowSymLinks
-        AllowOverride All
-        Require all granted
-    </Directory>
 </VirtualHost>
 
+<VirtualHost *:443>
+    ServerName ${SERVER_NAME}
+    DocumentRoot ${VHOST_ROOT}
+
+    SSLEngine on
+    SSLCertificateKeyFile ${CERT_FILE}.key
+    SSLCertificateFile ${CERT_FILE}.pem
+</VirtualHost>
