@@ -1,0 +1,34 @@
+# Build and test the LAPP image for a PHP version
+# and deploy it if the tests passed
+build_test: &build_test
+  stage: build_test
+  name: "Build LAPP image, test under Linux and deploy to Docker Hub"
+  os: linux
+  dist: xenial
+  language: shell
+  services:
+    - docker    
+  addons:
+    apt:
+      packages:
+        - rng-tools
+        - pandoc
+  script:
+    - .travis/build.sh
+    - .travis/linux-tests.sh
+  before_deploy:
+    - docker login --username "$REGISTRY_USER" --password "$REGISTRY_PASS"
+  deploy:
+    - provider: script
+      script:
+        - .travis/push.sh
+      skip_cleanup: true
+      on:
+        all_branches: true
+
+jobs:
+  include:
+    # Build and test images for various PHP versions
+    # and deploy each one if the tests passed
+    - <<: *build_test
+      env: PHP_VERSION=7.4 MOST_RECENT=true
