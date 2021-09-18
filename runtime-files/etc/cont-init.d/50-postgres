@@ -29,7 +29,7 @@ if [ ! -f $PG_ROOT/PG_VERSION ]; then
     # Create a random password if none was given
     if [ -z "$PG_PASSWORD" ]; then
         PG_PASSWORD=$(pwgen -cnB 12 1)
-        log_info "Random password '$PG_PASSWORD' generated for PostgreSQL user '$PG_USER'. Change ASAP!" | log_info
+        log_info '*** '"Random password '$PG_PASSWORD' generated for PostgreSQL user '$PG_USER'. Change ASAP!"' ***' | log_info
     fi
 
     echo "$PG_PASSWORD" >$PWFILE

@@ -92,6 +92,8 @@ is_podman_container() {
 #
 setup_volume() {
     local OWNER=$2
+    local CURRENT_OWNER_UID
+    local CURRENT_OWNER_GID
 
     # First run of a new instance, and no owner mapping requested?
     # TODO Use this branch also if a Docker container Desktop for Windows or macOS
@@ -123,9 +125,12 @@ setup_volume() {
             else
                 # For Docker, set UID and GID of $2 equal to the UID and GID
                 # of the current owner of $1
-                log_info "Setting up $1 as bind-mounted volume for the current owner"
-                usermod -u $(stat -c '%u' $1) -o $2
-                groupmod -g $(stat -c '%g' $1) -o $2
+                CURRENT_OWNER_UID=$(stat -c '%u' $1)
+                CURRENT_OWNER_GID=$(stat -c '%g' $1)
+
+                log_info "Setting up $1 as bind-mounted volume for $CURRENT_OWNER_UID:$CURRENT_OWNER_GID"
+                usermod -u $CURRENT_OWNER_UID -o $2
+                groupmod -g $CURRENT_OWNER_GID -o $2
             fi
 
         else
@@ -136,7 +141,7 @@ setup_volume() {
         # Unpack $4 if specified
         mkdir -p $1
         if [ -f "$4" ]; then
-            log_info "Unpacking $4 into $1 (this could take some time)"
+            log_info "Unpacking $4 into $1"
             tar -xzf $4 -C $1
         fi
 
