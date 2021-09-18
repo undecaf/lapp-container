@@ -113,6 +113,26 @@ verify_not_in_logs() {
     fi
 }
 
+# Generates a private key and a certificate with $1 as CN and
+# installs them with $2 as basename in $CERTS_DIR of container
+# $3 (defaults to 'lapp').
+deploy_cert() {
+    local KEY_FILE=$(mktemp)
+    local CSR_FILE=$(mktemp)
+    local PEM_FILE=$(mktemp)
+
+    openssl genrsa -out $KEY_FILE 2048 2>/dev/null
+    openssl req -new -sha256 -out $CSR_FILE -key $KEY_FILE -subj "/CN=$1" 2>/dev/null
+    openssl x509 -req -days 1 -in $CSR_FILE -signkey $KEY_FILE -out $PEM_FILE -outform PEM 2>/dev/null
+
+    docker cp $KEY_FILE lapp:$CERTS_DIR/$2.key
+    docker exec "${3:-lapp}" /bin/bash -c "chmod 600 $CERTS_DIR/$2.key"
+    docker cp $PEM_FILE lapp:$CERTS_DIR/$2.pem
+    docker exec "${3:-lapp}" /bin/bash -c "chmod 644 $CERTS_DIR/$2.pem; chown apache: $CERTS_DIR/$2."'{key,pem}'
+
+    rm -f $KEY_FILE $CSR_FILE $PEM_FILE
+}
+
 # Cleans up container and volumes after a test
 cleanup() {
     lapp_ stop --rm "$@" -t 1
@@ -128,6 +148,9 @@ HOST_IP=127.0.0.1
 HTTP_PORT=8080
 HTTPS_PORT=8443
 DB_PORT=3000
+WWW_ROOT=/var/www/localhost
+CERTS_DIR=$WWW_ROOT/.certs
+VHOSTS_CONF_DIR=$WWW_ROOT/.vhosts
 README_URL=http://$HOST_IP:$HTTP_PORT/readme.html
 README_URL_SECURE=https://$HOST_IP:$HTTPS_PORT/readme.html
 SYNTAX_ERR_URL=http://$HOST_IP:$HTTP_PORT/syntax-err.php
@@ -245,11 +268,11 @@ echo $'\n*************** PHP error logging\n' >&2
 
 lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp .travis/$(basename $SYNTAX_ERR_URL) lapp:/var/www/localhost/public/
+docker cp .travis/$(basename $SYNTAX_ERR_URL) lapp:$WWW_ROOT/public/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $SYNTAX_ERR_URL | grep -q '500 Internal Server Error'
 verify_in_logs $SUCCESS_TIMEOUT 'syntax error'
 
-docker cp .travis/$(basename $RUNTIME_ERR_URL) lapp:/var/www/localhost/public/
+docker cp .travis/$(basename $RUNTIME_ERR_URL) lapp:$WWW_ROOT/public/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $RUNTIME_ERR_URL | grep -q '200 OK'
 verify_in_logs $SUCCESS_TIMEOUT 'Undefined variable'
 
@@ -298,12 +321,12 @@ echo $'\nTesting volume names and persistence' >&2
 LAPP_WWW_VOL=$(basename "$WWW_VOL") lapp_ run -V $(basename "$PG_VOL")
 verify_volumes_exist $(basename "$WWW_VOL") $(basename "$PG_VOL")
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-FINGERPRINT="$(docker exec lapp openssl x509 -noout -in /var/www/localhost/.certs/default.pem -fingerprint -sha256)"
+FINGERPRINT="$(docker exec lapp openssl x509 -noout -in $CERTS_DIR/default.pem -fingerprint -sha256)"
 
 lapp_ stop --rm -t 1
 LAPP_WWW_VOL=$(basename "$WWW_VOL") lapp_ run -V $(basename "$PG_VOL")
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-test "$FINGERPRINT" = "$(docker exec lapp openssl x509 -noout -in /var/www/localhost/.certs/default.pem -fingerprint -sha256)"
+test "$FINGERPRINT" = "$(docker exec lapp openssl x509 -noout -in $CERTS_DIR/default.pem -fingerprint -sha256)"
 
 cleanup
 
@@ -384,7 +407,7 @@ echo $'\nVerifying mode changes and abbreviations' >&2
 LAPP_MODE=d lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'developer mode'
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp .travis/$(basename $MODE_TEST_URL) lapp:/var/www/localhost/public/
+docker cp .travis/$(basename $MODE_TEST_URL) lapp:$WWW_ROOT/public/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $MODE_TEST_URL >$TEMP_FILE
 grep -q '^Server: Apache/.* PHP/.* OpenSSL/.*$' $TEMP_FILE \
     && grep -q '^X-Powered-By: PHP/.*$' $TEMP_FILE \
@@ -435,7 +458,6 @@ cleanup
 # Test certificates
 echo $'\n*************** Certificates' >&2
 HOST_NAME=dev.under.test
-CERTFILE='/tmp/test-cert'
 CN=foo.bar
 
 echo $'\nVerifying self-signed certificate' >&2
@@ -444,16 +466,9 @@ verify_in_logs $SUCCESS_TIMEOUT "CN=$HOST_NAME"
 cleanup
 
 echo $'\nVerifying custom certificate' >&2
-openssl genrsa -out "$CERTFILE.key" 2048 2>/dev/null
-openssl req -new -sha256 -out "$CERTFILE.csr" -key "$CERTFILE.key" -subj "/CN=$CN" 2>/dev/null
-openssl x509 -req -days 1 -in "$CERTFILE.csr" -signkey "$CERTFILE.key" -out "$CERTFILE.pem" -outform PEM 2>/dev/null
-
 lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp "$CERTFILE.key" lapp:/var/www/localhost/.certs/default.key
-docker exec lapp /bin/bash -c 'chmod 600 /var/www/localhost/.certs/default.key'
-docker cp "$CERTFILE.pem" lapp:/var/www/localhost/.certs/default.pem
-docker exec lapp /bin/bash -c 'chmod 644 /var/www/localhost/.certs/default.pem'
+deploy_cert $CN default
 lapp_ env
 
 verify_cmd_success $SUCCESS_TIMEOUT curl -Isk $README_URL_SECURE | grep -q '200 OK'
@@ -461,6 +476,30 @@ echo | \
     openssl s_client -showcerts -servername -connect $HOST_IP:$HTTPS_PORT 2>/dev/null | \
         grep -q -F "subject=CN = $CN"
 cleanup
+
+
+# Virtual hosts
+echo $'\n*************** Virtual hosts\n' >&2
+HOST_NAME=dev.test
+VHOST=test-vhost
+CN=$VHOST.$HOST_NAME
+CONTENT=$(openssl rand -hex 12)
+
+lapp_ run -H $HOST_NAME
+verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
+docker cp lapp:$VHOSTS_CONF_DIR/vhost.conf.template /tmp/$VHOST.conf
+sed -e 's/Define VHOST_SUBDOMAIN .*/Define VHOST_SUBDOMAIN '$VHOST/ -i /tmp/$VHOST.conf
+docker cp /tmp/$VHOST.conf lapp:$VHOSTS_CONF_DIR/$VHOST.conf
+docker exec lapp /bin/bash -c "mkdir -p $WWW_ROOT/$VHOST; echo $CONTENT >$WWW_ROOT/$VHOST/index.html"
+docker exec lapp /bin/bash -c "chown -R apache: $WWW_ROOT/$VHOST $VHOSTS_CONF_DIR"
+
+deploy_cert $CN $VHOST
+lapp_ env
+
+verify_cmd_success $SUCCESS_TIMEOUT curl -s -H "Host: $CN" http://$HOST_IP:$HTTP_PORT/ | grep -q -F $CONTENT
+
+cleanup
+rm -f /tmp/$VHOST.conf
 
 
 # Remove trap
