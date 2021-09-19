@@ -48,10 +48,11 @@ echo $'\n*************** '"Building image for tags: $DEPLOY_TAGS"
 set -x
 
 $ENGINE build \
-    --build-arg BUILD_DATE=$(date --utc +'%Y-%m-%dT%H:%M:%SZ') \
-    --build-arg COMMIT=$TRAVIS_COMMIT \
-    --build-arg PRIMARY_TAG=$PRIMARY_TAG \
-    --build-arg DEPLOY_TAGS="$DEPLOY_TAGS" \
-    --tag $PRIMARY_IMG \
-    "$@" \
-    .
+  --build-arg MAJOR_VERSION=$MAJOR_VERSION \
+  --build-arg BUILD_DATE=$(date --utc +'%Y-%m-%dT%H:%M:%SZ') \
+  --build-arg COMMIT=$TRAVIS_COMMIT \
+  --build-arg PRIMARY_TAG=$PRIMARY_TAG \
+  --build-arg DEPLOY_TAGS="$DEPLOY_TAGS" \
+  --tag $PRIMARY_IMG \
+  "$@" \
+  .

@@ -4,7 +4,7 @@
 # Usage: source $0
 #
 # Required environment:
-#   PHP_VERSION        PHP version number
+#   PHP_VERSION        PHP version number (required)
 #   TRAVIS_REPO_SLUG   undecaf/lapp-container (required)
 #   TRAVIS_BRANCH      master, dev or Git tag (optional)
 #   TRAVIS_TAG         Git tag (optional)
@@ -17,6 +17,9 @@ major_minor() {
     RE='^([0-9]+\.[0-9]+)(\..+)?'
     [[ "$1" =~ $RE ]] && echo ${BASH_REMATCH[1]} || echo ''
 }
+
+# Extract major PHP version
+export MAJOR_VERSION=${PHP_VERSION%%.*}
 
 # Make a list of the tags to which to deploy the tested image
 PHP_TAG=$(major_minor $PHP_VERSION)
@@ -49,6 +52,7 @@ cat <<EOF
 | TRAVIS_COMMIT: '$TRAVIS_COMMIT'
 | TRAVIS_TAG:    '$TRAVIS_TAG'
 |
+| MAJOR_VERSION: '$MAJOR_VERSION'
 | PHP_VERSION:   '$PHP_VERSION'
 |
 | PRIMARY_IMG:   '$PRIMARY_IMG'

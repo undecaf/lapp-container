@@ -270,14 +270,13 @@ lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
 docker cp .travis/$(basename $SYNTAX_ERR_URL) lapp:$WWW_ROOT/public/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $SYNTAX_ERR_URL | grep -q '500 Internal Server Error'
-verify_in_logs $SUCCESS_TIMEOUT 'syntax error'
+verify_in_logs $SUCCESS_TIMEOUT 'PHP Parse error'
 
 docker cp .travis/$(basename $RUNTIME_ERR_URL) lapp:$WWW_ROOT/public/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $RUNTIME_ERR_URL | grep -q '200 OK'
 verify_in_logs $SUCCESS_TIMEOUT 'Undefined variable'
 
 cleanup
-
 
 # Test database
 echo $'\n*************** PostgreSQL connectivity, custom credentials and collation\n' >&2
@@ -430,11 +429,11 @@ echo $'\nVerifying MODE persistence' >&2
 { lapp_ env -l PHP_foo=bar; sleep $PIPE_DELAY; } | grep -q -F 'developer mode with XDebug'
 
 echo $'\nVerifying php.ini setting' >&2
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp cat /etc/php7/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
+verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
 
 echo $'\nVerifying settings precedence' >&2
 { LAPP_MODE=dev PHP_foo=xyz lapp_ env -l MODE=x PHP_foo=bar; sleep $PIPE_DELAY; } | grep -q -F 'developer mode with XDebug'
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp cat /etc/php7/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
+verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
 
 cleanup
 

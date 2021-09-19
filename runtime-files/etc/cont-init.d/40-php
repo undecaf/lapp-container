@@ -44,19 +44,19 @@ done
 
 # Update the Apache/PHP configuration
 ln -sf /etc/apache2/conf.d/mode.conf.${EXT} /etc/apache2/conf.d/zz_mode.conf
-ln -sf /etc/php7/mode.${EXT}.template /etc/php7/conf.d/zz_50_mode.ini
+ln -sf /etc/php/mode.${EXT}.template /etc/php${MAJOR_VERSION}/conf.d/zz_50_mode.ini
 
 # Insert php.ini setting overrides
 printenv \
     | awk -F '=' \
         -e 'BEGIN { IGNORECASE = 1 }' \
         -e '$1 ~ /^PHP_/ { gsub("^PHP_", "", $1); gsub(/"/, "\\\"", $2); printf "%s=\"%s\"\n", $1, $2; }' \
-    > /etc/php7/conf.d/zz_99_overrides.ini
+    > /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini
 
-if [ -s /etc/php7/conf.d/zz_99_overrides.ini ]; then
+if [ -s /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini ]; then
     while read -r LINE; do
     	log_info "php.ini override: $LINE"
-    done </etc/php7/conf.d/zz_99_overrides.ini
+    done </etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini
 fi
 
 # Enable/disable XDebug support
@@ -65,14 +65,14 @@ if [ -n "$XDEBUG" ]; then
     export REMOTE_HOST=$HOST_IP
     test -n "$HOST_IP" && set_var REMOTE_CONNECT_BACK 0 || set_var REMOTE_CONNECT_BACK 1
 
-	cat /etc/php7/xdebug.ini.template | envsubst > /etc/php7/conf.d/xdebug.ini
+	cat /etc/php/xdebug.ini.template | envsubst > /etc/php${MAJOR_VERSION}/conf.d/xdebug.ini
 	log_info "XDebug enabled"
     while read -r LINE; do
         log_info "php.ini XDebug: $LINE"
-    done < <(grep -E '^xdebug\.(discover_)?client_host=' /etc/php7/conf.d/xdebug.ini)
+    done < <(grep -E '^xdebug\.(discover_)?client_host=' /etc/php${MAJOR_VERSION}/conf.d/xdebug.ini)
 
 else
-	truncate -s 0 /etc/php7/conf.d/xdebug.ini
+	truncate -s 0 /etc/php${MAJOR_VERSION}/conf.d/xdebug.ini
 	log_info "XDebug disabled"
 fi
 

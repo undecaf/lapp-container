@@ -1,6 +1,7 @@
 FROM alpine:3.14
 
 # Build command arguments
+ARG MAJOR_VERSION
 ARG BUILD_DATE
 ARG COMMIT
 ARG PRIMARY_TAG=exp

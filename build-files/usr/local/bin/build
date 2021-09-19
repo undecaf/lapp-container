@@ -16,6 +16,7 @@ echo $'\n*************** '"Building LAPP container image, tags: $DEPLOY_TAGS, co
 E=$(mktemp)
 cat - /etc/environment >$E <<EOF
 # Build arguments
+export MAJOR_VERSION=$MAJOR_VERSION
 export DEPLOY_TAGS='$DEPLOY_TAGS'
 export BUILD_DATE='${BUILD_DATE:-$(date --utc +'%Y-%m-%dT%H:%M:%SZ')}'
 
@@ -105,66 +106,68 @@ curl -s -L https://github.com/just-containers/s6-overlay/releases/download/v${S6
 apk add \
 	apache2 \
     apache2-ssl \
-	php7 \
-	php7-apache2 \
-	php7-phar \
-	php7-json \
-	php7-iconv \
-	php7-openssl
+	php${MAJOR_VERSION} \
+	php${MAJOR_VERSION}-apache2 \
+	php${MAJOR_VERSION}-phar \
+	php${MAJOR_VERSION}-json \
+	php${MAJOR_VERSION}-iconv \
+	php${MAJOR_VERSION}-openssl
 
 # Install PHP modules
 apk add \
     icu-libs \
 	imagemagick \
-	php7-bcmath \
-	php7-bz2 \
-	php7-calendar \
-	php7-ctype \
-	php7-curl \
-	php7-dom \
-	php7-exif \
-	php7-fileinfo \
-	php7-ftp \
-	php7-gd \
-	php7-gettext \
-	php7-gmp \
-	php7-intl \
-	php7-mbstring \
-	php7-mcrypt \
-	php7-mysqli \
-	php7-pcntl \
-	php7-pdo \
-	php7-pdo_dblib \
-	php7-pdo_mysql \
-	php7-pdo_pgsql \
-	php7-pdo_sqlite \
-	php7-pecl-apcu \
-	php7-pecl-igbinary \
-	php7-pecl-imagick \
-	php7-posix \
-	php7-redis \
-	php7-session \
-	php7-shmop \
-	php7-simplexml \
-	php7-soap \
-	php7-sockets \
-	php7-sodium \
-	php7-sqlite3 \
-	php7-sysvmsg \
-	php7-sysvsem \
-	php7-sysvshm \
-	php7-tokenizer \
-	php7-xdebug \
-	php7-xmlreader \
-	php7-xmlrpc \
-	php7-xmlwriter \
-	php7-xsl \
-	php7-zip
+	php${MAJOR_VERSION}-bcmath \
+	php${MAJOR_VERSION}-bz2 \
+	php${MAJOR_VERSION}-calendar \
+	php${MAJOR_VERSION}-ctype \
+	php${MAJOR_VERSION}-curl \
+	php${MAJOR_VERSION}-dom \
+	php${MAJOR_VERSION}-exif \
+	php${MAJOR_VERSION}-fileinfo \
+	php${MAJOR_VERSION}-ftp \
+	php${MAJOR_VERSION}-gd \
+	php${MAJOR_VERSION}-gettext \
+	php${MAJOR_VERSION}-gmp \
+	php${MAJOR_VERSION}-intl \
+	php${MAJOR_VERSION}-mbstring \
+	php${MAJOR_VERSION}-mysqli \
+	php${MAJOR_VERSION}-pcntl \
+	php${MAJOR_VERSION}-pdo \
+	php${MAJOR_VERSION}-pdo_dblib \
+	php${MAJOR_VERSION}-pdo_mysql \
+	php${MAJOR_VERSION}-pdo_pgsql \
+	php${MAJOR_VERSION}-pdo_sqlite \
+	php${MAJOR_VERSION}-pecl-apcu \
+	php${MAJOR_VERSION}-pecl-igbinary \
+	php${MAJOR_VERSION}-pecl-imagick \
+	php${MAJOR_VERSION}-pecl-mcrypt \
+	php${MAJOR_VERSION}-pecl-redis \
+	php${MAJOR_VERSION}-pecl-xdebug \
+	php${MAJOR_VERSION}-posix \
+	php${MAJOR_VERSION}-session \
+	php${MAJOR_VERSION}-shmop \
+	php${MAJOR_VERSION}-simplexml \
+	php${MAJOR_VERSION}-soap \
+	php${MAJOR_VERSION}-sockets \
+	php${MAJOR_VERSION}-sodium \
+	php${MAJOR_VERSION}-sqlite3 \
+	php${MAJOR_VERSION}-sysvmsg \
+	php${MAJOR_VERSION}-sysvsem \
+	php${MAJOR_VERSION}-sysvshm \
+	php${MAJOR_VERSION}-tokenizer \
+	php${MAJOR_VERSION}-xmlreader \
+	php${MAJOR_VERSION}-xmlwriter \
+	php${MAJOR_VERSION}-xsl \
+	php${MAJOR_VERSION}-zip
+
+# Since this system has only one PHP version:
+which php || ln -s $(which php${MAJOR_VERSION}) /usr/local/bin/php
 
 # Install Composer
 curl -s -S https://getcomposer.org/installer | php
 mv composer.phar /usr/local/bin/
-chmod 755 /etc/php7
+chmod 755 /etc/php${MAJOR_VERSION}
 
 # Move document root to $DOCROOT, remove unused directories
 mkdir -p $WWW_ROOT $DOCROOT
@@ -184,7 +187,7 @@ mkdir -p $PG_ROOT
 touch $PG_ROOT/$UNBOUND_MARKER
 
 chmod 755 /usr/local/bin/*
-chmod 755 /etc/php7
+chmod 755 /etc/php${MAJOR_VERSION}
 
 # Clean up (must be the last command in this file)
 rm -rf /var/cache/apk/* $0
