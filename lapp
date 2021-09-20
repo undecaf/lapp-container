@@ -314,7 +314,7 @@ exec_engine() {
 # --------------------------------------------------------------------------
 
 # Autocomplete command
-CMD=$(autocomplete "$1" run stop logs env composer shell)
+CMD=$(autocomplete "$1" run stop logs env shell)
 
 [ $# -ge 1 ] && shift || true
 OPT_COUNT=$#
@@ -563,40 +563,6 @@ EOT
         ;;
 
 
-    # Run Composer in a running LAPP container
-    composer)
-        USAGE=$($CAT <<EOT
-
-Usage:
-  $SCRIPT composer [option]... COMPOSER_CMD [Composer option]...
-  $SCRIPT composer [-h|--help]
-
-Executes a Composer command inside of a running LAPP container.
-
-Options (default values can be overridden by environment variables):
-
-  --engine=ENGINE, -e ENGINE
-      Container engine being used: 'docker', 'podman' or an absolute path
-      to the engine executable.
-      Default: \$LAPP_ENGINE, or 'podman' if installed, else 'docker'.
-
-  --name=NAME, -n NAME
-      Same container name as specified for 'lapp run'.
-      Default: \$LAPP_NAME, or 'lapp'.
- 
-  --debug, -d
-      If this option is present then Docker/Podman commands and output appear
-      at the console. Otherwise only 'stderr' is displayed.
-      Default: \$LAPP_DEBUG, or not set.
-
-  --help, -h
-      Displays this text and exits.
- 
-EOT
-        )
-        ;;
-
-
     # Open an interactive Bash shell in a running LAPP container
     shell)
         USAGE=$($CAT <<EOT
@@ -656,8 +622,6 @@ Available commands:
   logs          Displays the log output of a running LAPP container.
  
   env           Modifies the environment of a running LAPP container.
-
-  composer      Executes a Composer command inside a running LAPP container.
 
   shell         Opens an interactive Bash shell in a running LAPP container.
 
@@ -720,17 +684,17 @@ while [ $# -gt 0 ]; do
             ;;
 
         # Container name
-        @(run|stop|composer|shell|env):@(-n|--name))
+        @(run|stop|shell|env):@(-n|--name))
             shift
             ;&
 
-        @(run|stop|composer|shell|env):--name=*)
+        @(run|stop|shell|env):--name=*)
             LAPP_NAME="${1#--name=}"
             shift
             ;;
 
         # Debug container engine commands
-        @(run|stop|logs|composer|shell|env):@(-d|--debug))
+        @(run|stop|logs|shell|env):@(-d|--debug))
             LAPP_DEBUG=on
             shift
             ;;
@@ -1072,11 +1036,6 @@ case "$CMD" in
         CMD_START=$($LAPP_ENGINE exec "$LAPP_NAME" date -u -Is)
         run_engine exec "$LAPP_NAME" setenv $HOST_IP_ENV "$@"
         exec_engine logs --since $CMD_START "$LAPP_NAME"
-        ;;
-
-
-    composer)
-        exec_engine exec "$LAPP_NAME" composer "$@"
         ;;
 
 

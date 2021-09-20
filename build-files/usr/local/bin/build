@@ -167,6 +167,7 @@ which php || ln -s $(which php${MAJOR_VERSION}) /usr/local/bin/php
 # Install Composer
 curl -s -S https://getcomposer.org/installer | php
 mv composer.phar /usr/local/bin/
+ln -s /usr/local/bin/composer.phar /usr/local/bin/composer
 chmod 755 /etc/php${MAJOR_VERSION}
 
 # Move document root to $DOCROOT, remove unused directories
