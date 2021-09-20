@@ -1,0 +1,15 @@
+#!/bin/bash
+
+#
+# Opens a Bash session as user $APACHE_USER.
+#
+
+# Bash is required for the included file, so enforce it
+test "$SHELL" != '/bin/bash' && SHELL=/bin/bash exec /bin/bash -c $0 "$@"
+
+# Load the runtime environment
+. /usr/local/lib/env.inc
+load_env
+
+# Run Bash as $APACHE_USER
+su-exec $APACHE_USER /bin/bash -l
