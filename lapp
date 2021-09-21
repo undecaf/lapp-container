@@ -24,7 +24,7 @@
 
 # Constants
 IMG_REPO_SLUG=undecaf/lapp-container
-IMG_WWW_ROOT=/var/www/localhost
+IMG_WWW_ROOT=/var/www/www-vol
 IMG_PG_ROOT=/var/lib/postgresql
 IMG_FILE_LIMIT='nofile=10000:15000'
 IMG_ENV_RE='TIMEZONE|LANG|MODE|PHP_.+'

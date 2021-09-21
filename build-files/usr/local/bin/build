@@ -22,8 +22,8 @@ export BUILD_DATE='${BUILD_DATE:-$(date --utc +'%Y-%m-%dT%H:%M:%SZ')}'
 
 # Build constants
 export APACHE_HOME=$APACHE_HOME
-export WWW_ROOT=$WWW_ROOT
-export PG_ROOT=$PG_ROOT
+export WWW_VOL=$WWW_VOL
+export PG_VOL=$PG_VOL
 export UNBOUND_MARKER=$(mktemp -u unbound_XXXXXX)
 
 EOF
@@ -170,10 +170,10 @@ mv composer.phar /usr/local/bin/
 ln -s /usr/local/bin/composer.phar /usr/local/bin/composer
 chmod 755 /etc/php${MAJOR_VERSION}
 
-# Move document root to $DOCROOT, remove unused directories
-mkdir -p $WWW_ROOT $DOCROOT
-sed -i "s#/var/www/localhost/htdocs#$DOCROOT#" /etc/apache2/httpd.conf
-rm -rf $WWW_ROOT/htdocs $WWW_ROOT/cgi-bin
+# Move document root to $DEFAULT_DOCROOT, remove unused directories
+mkdir -p $DEFAULT_DOCROOT
+sed -i "s#/var/www/localhost/htdocs#$DEFAULT_DOCROOT#" /etc/apache2/httpd.conf
+rm -rf /var/www/localhost
 
 # Make everything in $APACHE_HOME accessible by Apache
 find $APACHE_HOME -type d -exec chmod 755 {} \;
@@ -183,9 +183,9 @@ chown -R $APACHE_USER: $APACHE_HOME
 apk add \
     postgresql
 
-# Leave a marker in $PG_ROOT so that bind mounts can be detected
-mkdir -p $PG_ROOT
-touch $PG_ROOT/$UNBOUND_MARKER
+# Leave a marker in $PG_VOL so that bind mounts can be detected
+mkdir -p $PG_VOL
+touch $PG_VOL/$UNBOUND_MARKER
 
 chmod 755 /usr/local/bin/*
 chmod 755 /etc/php${MAJOR_VERSION}

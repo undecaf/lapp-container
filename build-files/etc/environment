@@ -7,16 +7,15 @@ export http_proxy=${http_proxy:-$HTTP_PROXY}
 export https_proxy=${https_proxy:-$HTTPS_PROXY}
 
 # Derived environment variables
-export LOGS_BASE=/var/log
-
 export APACHE_USER=apache
-export APACHE_VHOSTS=$WWW_ROOT/.vhosts
-export APACHE_LOGS=$LOGS_BASE/apache2
-export APACHE_CERTS=$WWW_ROOT/.certs
-export DEFAULT_CERT=$APACHE_CERTS/default
+export APACHE_LOGS=/var/log/apache2
 
-export DOCROOT=$WWW_ROOT/public
-export WWW_ROOT_GZ=$APACHE_HOME/www-root.tar.gz
+export VHOSTS_CONF_DIR=$WWW_VOL/conf.d
+export DEFAULT_VHOST=localhost
+export DEFAULT_CERT=$VHOSTS_CONF_DIR/$DEFAULT_VHOST
+export DEFAULT_DOCROOT=$WWW_VOL/$DEFAULT_VHOST/public
+
+export WWW_VOL_INIT=$APACHE_HOME/www-vol-init.tar.gz
 
 export PG_USER=postgres
 export PG_RUN=/run/postgresql

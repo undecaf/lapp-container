@@ -16,7 +16,7 @@ load_env
 exec s6-envdir ${ENV_DIR} \
     su-exec $PG_USER \
     postgres \
-        -D $PG_ROOT \
+        -D $PG_VOL \
         --listen_addresses='*' \
         --log_destination=syslog \
         --log_line_prefix='' \

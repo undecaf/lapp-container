@@ -13,15 +13,15 @@ set -e
 # Load the runtime environment
 load_env
 
-# Set up $PG_ROOT as a volume (bind-mounted or unbound)
-setup_volume $PG_ROOT $PG_USER "$LAPP_PG_OWNER"
-chmod -R 700 $PG_ROOT
+# Set up $PG_VOL as a volume (bind-mounted or unbound)
+setup_volume $PG_VOL $PG_USER "$LAPP_PG_OWNER"
+chmod -R 700 $PG_VOL
 
 mkdir -p $PG_RUN
 chown -R $PG_USER: $PG_RUN
 
 # Initialize PostgreSQL if necessary
-if [ ! -f $PG_ROOT/PG_VERSION ]; then
+if [ ! -f $PG_VOL/PG_VERSION ]; then
     # Initialize PostgreSQL
     PWFILE=$(mktemp -u)
     trap "shred -un 1 $PWFILE" EXIT
@@ -34,10 +34,10 @@ if [ ! -f $PG_ROOT/PG_VERSION ]; then
 
     echo "$PG_PASSWORD" >$PWFILE
     su-exec $PG_USER \
-    initdb --pgdata=$PG_ROOT --auth=md5 --username=$PG_USER --pwfile=$PWFILE | log_info
+    initdb --pgdata=$PG_VOL --auth=md5 --username=$PG_USER --pwfile=$PWFILE | log_info
 
     # Allow external IPv4 and IPv6 connections
-    cat >>$PG_ROOT/pg_hba.conf <<EOT
+    cat >>$PG_VOL/pg_hba.conf <<EOT
 
 host  all  all  0.0.0.0/0  md5
 host  all  all  ::0/0      md5

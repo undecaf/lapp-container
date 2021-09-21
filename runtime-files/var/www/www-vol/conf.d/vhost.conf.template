@@ -1,9 +1,9 @@
 Define VHOST_SUBDOMAIN vhost-subdomain
-Define VHOST_ROOT ${WWW_ROOT}/${VHOST_SUBDOMAIN}
+Define DOCROOT ${WWW_VOL}/${VHOST_SUBDOMAIN}/public
 Define SERVER_NAME ${VHOST_SUBDOMAIN}.${HOSTNAME}
-Define CERT_FILE ${APACHE_CERTS}/${VHOST_SUBDOMAIN}
+Define CERT_FILE ${VHOSTS_CONF_DIR}/${VHOST_SUBDOMAIN}
 
-<Directory ${VHOST_ROOT} >
+<Directory ${DOCROOT} >
     Options -Indexes +FollowSymLinks
     AllowOverride All
     Require all granted
@@ -11,12 +11,12 @@ Define CERT_FILE ${APACHE_CERTS}/${VHOST_SUBDOMAIN}
 
 <VirtualHost *:80>
     ServerName ${SERVER_NAME}
-    DocumentRoot ${VHOST_ROOT}
+    DocumentRoot ${DOCROOT}
 </VirtualHost>
 
 <VirtualHost *:443>
     ServerName ${SERVER_NAME}
-    DocumentRoot ${VHOST_ROOT}
+    DocumentRoot ${DOCROOT}
 
     SSLEngine on
     SSLCertificateKeyFile ${CERT_FILE}.key

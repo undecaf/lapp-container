@@ -13,8 +13,8 @@ ARG S6_OVERLAY_VER=2.0.0.1
 
 # Build _constants_ (do not change)
 ARG APACHE_HOME=/var/www
-ARG WWW_ROOT=${APACHE_HOME}/localhost
-ARG PG_ROOT=/var/lib/postgresql
+ARG WWW_VOL=${APACHE_HOME}/www-vol
+ARG PG_VOL=/var/lib/postgresql
 
 # Build-time proxy settings (not persisted in the image)
 ARG http_proxy=''
@@ -22,7 +22,7 @@ ARG https_proxy=''
 
 LABEL \
     org.opencontainers.image.title="A LAPP container image" \
-	org.opencontainers.image.description="Apache, PHP, Composer, ImageMagick and PostgreSQL" \
+	org.opencontainers.image.description="Apache, PHP, PostgreSQL, Composer and ImageMagick" \
 	org.opencontainers.image.version="${PRIMARY_TAG}" \
 	org.opencontainers.image.revision="${COMMIT}" \
 	org.opencontainers.image.url="https://hub.docker.com/r/undecaf/lapp-container" \
@@ -39,7 +39,7 @@ RUN /usr/local/bin/build
 COPY runtime-files /
 RUN /usr/local/bin/configure
 
-VOLUME ${WWW_ROOT} ${PG_ROOT}
+VOLUME ${WWW_VOL} ${PG_VOL}
 
 EXPOSE 80 443 5432
 

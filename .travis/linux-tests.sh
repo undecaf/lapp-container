@@ -114,7 +114,7 @@ verify_not_in_logs() {
 }
 
 # Generates a private key and a certificate with $1 as CN and
-# installs them with $2 as basename in $CERTS_DIR of container
+# installs them with $2 as basename in $VHOSTS_CONF_DIR of container
 # $3 (defaults to 'lapp').
 deploy_cert() {
     local KEY_FILE=$(mktemp)
@@ -125,10 +125,10 @@ deploy_cert() {
     openssl req -new -sha256 -out $CSR_FILE -key $KEY_FILE -subj "/CN=$1" 2>/dev/null
     openssl x509 -req -days 1 -in $CSR_FILE -signkey $KEY_FILE -out $PEM_FILE -outform PEM 2>/dev/null
 
-    docker cp $KEY_FILE lapp:$CERTS_DIR/$2.key
-    docker exec "${3:-lapp}" /bin/bash -c "chmod 600 $CERTS_DIR/$2.key"
-    docker cp $PEM_FILE lapp:$CERTS_DIR/$2.pem
-    docker exec "${3:-lapp}" /bin/bash -c "chmod 644 $CERTS_DIR/$2.pem; chown apache: $CERTS_DIR/$2."'{key,pem}'
+    docker cp $KEY_FILE lapp:$VHOSTS_CONF_DIR/$2.key
+    docker exec "${3:-lapp}" /bin/bash -c "chmod 600 $VHOSTS_CONF_DIR/$2.key"
+    docker cp $PEM_FILE lapp:$VHOSTS_CONF_DIR/$2.pem
+    docker exec "${3:-lapp}" /bin/bash -c "chmod 644 $VHOSTS_CONF_DIR/$2.pem; chown apache: $VHOSTS_CONF_DIR/$2."'{key,pem}'
 
     rm -f $KEY_FILE $CSR_FILE $PEM_FILE
 }
@@ -148,9 +148,13 @@ HOST_IP=127.0.0.1
 HTTP_PORT=8080
 HTTPS_PORT=8443
 DB_PORT=3000
-WWW_ROOT=/var/www/localhost
-CERTS_DIR=$WWW_ROOT/.certs
-VHOSTS_CONF_DIR=$WWW_ROOT/.vhosts
+
+WWW_VOL=/var/www/www-vol
+VHOSTS_CONF_DIR=$WWW_VOL/conf.d
+DEFAULT_VHOST=localhost
+DEFAULT_DOCROOT=$WWW_VOL/$DEFAULT_VHOST/public
+DEFAULT_CERT=$VHOSTS_CONF_DIR/$DEFAULT_VHOST
+
 README_URL=http://$HOST_IP:$HTTP_PORT/readme.html
 README_URL_SECURE=https://$HOST_IP:$HTTPS_PORT/readme.html
 SYNTAX_ERR_URL=http://$HOST_IP:$HTTP_PORT/syntax-err.php
@@ -268,11 +272,11 @@ echo $'\n*************** PHP error logging\n' >&2
 
 lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp .travis/$(basename $SYNTAX_ERR_URL) lapp:$WWW_ROOT/public/
+docker cp .travis/$(basename $SYNTAX_ERR_URL) lapp:$DEFAULT_DOCROOT/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $SYNTAX_ERR_URL | grep -q '500 Internal Server Error'
 verify_in_logs $SUCCESS_TIMEOUT 'PHP Parse error'
 
-docker cp .travis/$(basename $RUNTIME_ERR_URL) lapp:$WWW_ROOT/public/
+docker cp .travis/$(basename $RUNTIME_ERR_URL) lapp:$DEFAULT_DOCROOT/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $RUNTIME_ERR_URL | grep -q '200 OK'
 verify_in_logs $SUCCESS_TIMEOUT 'Undefined variable'
 
@@ -313,65 +317,67 @@ cleanup -n $CONT_NAME
 
 # Test volume names, working directories and ownership
 echo $'\n*************** Volume names, bind mounts and ownership, and volume persistence' >&2
-WWW_VOL='./www-volume/test-www'
-PG_VOL="$(readlink -f .)/postgres volume/test-pg"
+TEST_WWW_VOL='./www-volume/test-www'
+TEST_PG_VOL="$(readlink -f .)/postgres volume/test-pg"
+TEST_DOCROOT="$TEST_WWW_VOL/$DEFAULT_VHOST/public"
+TEST_VHOSTS_CONF_DIR=$TEST_WWW_VOL/$(basename $VHOSTS_CONF_DIR)
 
 echo $'\nTesting volume names and persistence' >&2
-LAPP_WWW_VOL=$(basename "$WWW_VOL") lapp_ run -V $(basename "$PG_VOL")
-verify_volumes_exist $(basename "$WWW_VOL") $(basename "$PG_VOL")
+LAPP_WWW_VOL=$(basename "$TEST_WWW_VOL") lapp_ run -V $(basename "$TEST_PG_VOL")
+verify_volumes_exist $(basename "$TEST_WWW_VOL") $(basename "$TEST_PG_VOL")
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-FINGERPRINT="$(docker exec lapp openssl x509 -noout -in $CERTS_DIR/default.pem -fingerprint -sha256)"
+FINGERPRINT="$(docker exec lapp openssl x509 -noout -in $DEFAULT_CERT.pem -fingerprint -sha256)"
 
 lapp_ stop --rm -t 1
-LAPP_WWW_VOL=$(basename "$WWW_VOL") lapp_ run -V $(basename "$PG_VOL")
+LAPP_WWW_VOL=$(basename "$TEST_WWW_VOL") lapp_ run -V $(basename "$TEST_PG_VOL")
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-test "$FINGERPRINT" = "$(docker exec lapp openssl x509 -noout -in $CERTS_DIR/default.pem -fingerprint -sha256)"
+test "$FINGERPRINT" = "$(docker exec lapp openssl x509 -noout -in $DEFAULT_CERT.pem -fingerprint -sha256)"
 
 cleanup
 
 echo $'\nTesting bind-mounted volumes and persistence' >&2
-LAPP_PG_VOL="$PG_VOL" lapp_ run -v "$WWW_VOL"
+LAPP_PG_VOL="$TEST_PG_VOL" lapp_ run -v "$TEST_WWW_VOL"
 
-verify_cmd_success $SUCCESS_TIMEOUT sudo test -f "$WWW_VOL/public/index.html"
-! sudo test -O "$WWW_VOL/public/index.html"
-! sudo test -G "$WWW_VOL/public/index.html"
+verify_cmd_success $SUCCESS_TIMEOUT sudo test -f "$TEST_DOCROOT/index.html"
+! sudo test -O "$TEST_DOCROOT/index.html"
+! sudo test -G "$TEST_DOCROOT/index.html"
 
-verify_cmd_success $SUCCESS_TIMEOUT sudo test -f "$PG_VOL/PG_VERSION"
-! sudo test -O "$PG_VOL/PG_VERSION"
-! sudo test -G "$PG_VOL/PG_VERSION"
+verify_cmd_success $SUCCESS_TIMEOUT sudo test -f "$TEST_PG_VOL/PG_VERSION"
+! sudo test -O "$TEST_PG_VOL/PG_VERSION"
+! sudo test -G "$TEST_PG_VOL/PG_VERSION"
 
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-FINGERPRINT="$(sudo openssl x509 -noout -in "$WWW_VOL/.certs/default.pem" -fingerprint -sha256)"
+FINGERPRINT="$(sudo openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 lapp_ stop --rm -t 1
-LAPP_PG_VOL="$PG_VOL" lapp_ run -v "$WWW_VOL"
+LAPP_PG_VOL="$TEST_PG_VOL" lapp_ run -v "$TEST_WWW_VOL"
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-test "$FINGERPRINT" = "$(sudo openssl x509 -noout -in "$WWW_VOL/.certs/default.pem" -fingerprint -sha256)"
+test "$FINGERPRINT" = "$(sudo openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 cleanup
-sudo rm -rf "$WWW_VOL" "$PG_VOL"
+sudo rm -rf "$TEST_WWW_VOL" "$TEST_PG_VOL"
 
 echo $'\nTesting bind-mounted volume ownership and persistence' >&2
-lapp_ run -v "$WWW_VOL" -o -V "$PG_VOL" -O
+lapp_ run -v "$TEST_WWW_VOL" -o -V "$TEST_PG_VOL" -O
 
-verify_cmd_success $SUCCESS_TIMEOUT test -f "$WWW_VOL/public/index.html"
-test -O "$WWW_VOL/public/index.html"
-test -G "$WWW_VOL/public/index.html"
+verify_cmd_success $SUCCESS_TIMEOUT test -f "$TEST_DOCROOT/index.html"
+test -O "$TEST_DOCROOT/index.html"
+test -G "$TEST_DOCROOT/index.html"
 
-verify_cmd_success $SUCCESS_TIMEOUT test -f "$PG_VOL/PG_VERSION"
-test -O "$PG_VOL/PG_VERSION"
-test -G "$PG_VOL/PG_VERSION"
+verify_cmd_success $SUCCESS_TIMEOUT test -f "$TEST_PG_VOL/PG_VERSION"
+test -O "$TEST_PG_VOL/PG_VERSION"
+test -G "$TEST_PG_VOL/PG_VERSION"
 
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-FINGERPRINT="$(openssl x509 -noout -in "$WWW_VOL/.certs/default.pem" -fingerprint -sha256)"
+FINGERPRINT="$(openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 lapp_ stop --rm -t 1
-lapp_ run -v "$WWW_VOL" -o -V "$PG_VOL" -O
+lapp_ run -v "$TEST_WWW_VOL" -o -V "$TEST_PG_VOL" -O
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-test "$FINGERPRINT" = "$(openssl x509 -noout -in "$WWW_VOL/.certs/default.pem" -fingerprint -sha256)"
+test "$FINGERPRINT" = "$(openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 cleanup
-rm -rf "$WWW_VOL" "$PG_VOL"
+rm -rf "$TEST_WWW_VOL" "$TEST_PG_VOL"
 
 
 # Test container environment settings
@@ -406,7 +412,7 @@ echo $'\nVerifying mode changes and abbreviations' >&2
 LAPP_MODE=d lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'developer mode'
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp .travis/$(basename $MODE_TEST_URL) lapp:$WWW_ROOT/public/
+docker cp .travis/$(basename $MODE_TEST_URL) lapp:$DEFAULT_DOCROOT/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $MODE_TEST_URL >$TEMP_FILE
 grep -q '^Server: Apache/.* PHP/.* OpenSSL/.*$' $TEMP_FILE \
     && grep -q '^X-Powered-By: PHP/.*$' $TEMP_FILE \
@@ -467,7 +473,7 @@ cleanup
 echo $'\nVerifying custom certificate' >&2
 lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-deploy_cert $CN default
+deploy_cert $CN $DEFAULT_VHOST
 lapp_ env
 
 verify_cmd_success $SUCCESS_TIMEOUT curl -Isk $README_URL_SECURE | grep -q '200 OK'
@@ -489,8 +495,8 @@ verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
 docker cp lapp:$VHOSTS_CONF_DIR/vhost.conf.template /tmp/$VHOST.conf
 sed -e 's/Define VHOST_SUBDOMAIN .*/Define VHOST_SUBDOMAIN '$VHOST/ -i /tmp/$VHOST.conf
 docker cp /tmp/$VHOST.conf lapp:$VHOSTS_CONF_DIR/$VHOST.conf
-docker exec lapp /bin/bash -c "mkdir -p $WWW_ROOT/$VHOST; echo $CONTENT >$WWW_ROOT/$VHOST/index.html"
-docker exec lapp /bin/bash -c "chown -R apache: $WWW_ROOT/$VHOST $VHOSTS_CONF_DIR"
+docker exec lapp /bin/bash -c "mkdir -p $WWW_VOL/$VHOST/public; echo $CONTENT >$WWW_VOL/$VHOST/public/index.html"
+docker exec lapp /bin/bash -c "chown -R apache: $WWW_VOL/$VHOST $VHOSTS_CONF_DIR"
 
 deploy_cert $CN $VHOST
 lapp_ env

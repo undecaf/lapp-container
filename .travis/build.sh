@@ -26,7 +26,7 @@ echo '<div class="Box-body p-4"><article class="markdown-body entry-content cont
 AFTER_BODY=$(mktemp -q)
 echo '</article></div>' >$AFTER_BODY
 
-README=./runtime-files/var/www/localhost/readme.html
+README=./runtime-files/var/www/readme.html
 mkdir -p $(dirname $README)
 
 pandoc \

@@ -21,15 +21,19 @@ remove_proxy_certs
 # Make executables executable
 chmod -R 755 /usr/local/bin
 
-# Put everything at and below $WWW_ROOT into an archive since this
+# Make the vHosts config directory world-unreadable
+chown -R $APACHE_USER: $APACHE_HOME
+chmod -R o-rwx $VHOSTS_CONF_DIR
+
+# Put everything at and below $WWW_VOL into an archive since this
 # directory may become the mount point of a bind mount at runtime
-tar -czf $WWW_ROOT_GZ -C $WWW_ROOT .
+tar -czf $WWW_VOL_INIT -C $WWW_VOL .
 
 # Clean up
-rm -rf $WWW_ROOT/* $WWW_ROOT/.[!.]*
+#rm -rf $WWW_VOL/* $WWW_VOL/.[!.]*
 
-# Leave a marker in $WWW_ROOT so that bind mounts can be detected
-touch $WWW_ROOT/$UNBOUND_MARKER
+# Leave a marker in $WWW_VOL so that bind mounts can be detected
+touch $WWW_VOL/$UNBOUND_MARKER
 
 # Remove this script (must be the last command in this file)
 rm -rf $0
