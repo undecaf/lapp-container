@@ -35,14 +35,7 @@ chmod 644 /etc/environment
 . /etc/environment
 
 # Install certificates for a caching proxy, if present
-# (irrelevant for apk as apk uses HTTP and has additional checksums)
 install_proxy_certs
-
-# Add extra repositories
-mkdir -p /etc/apk
-cat >>/etc/apk/repositories <<EOF
-http://dl-cdn.alpinelinux.org/alpine/edge/community
-EOF
 
 apk update
 apk upgrade
@@ -156,6 +149,7 @@ apk add \
 	php${MAJOR_VERSION}-sysvsem \
 	php${MAJOR_VERSION}-sysvshm \
 	php${MAJOR_VERSION}-tokenizer \
+	php${MAJOR_VERSION}-xml \
 	php${MAJOR_VERSION}-xmlreader \
 	php${MAJOR_VERSION}-xmlwriter \
 	php${MAJOR_VERSION}-xsl \
