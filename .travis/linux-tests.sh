@@ -18,21 +18,21 @@ lapp_() {
 # Returns success if all specified containers exist.
 verify_containers_exist() {
     echo "verify_containers_exist: $@" >&2
-    docker container inspect "$@" &>/dev/null \
+    $LAPP_ENGINE container inspect "$@" &>/dev/null \
         || { echo "verify_containers_exist failed: $@" >&2; return 1; }
 }
 
 # Returns success if all specified containers are running.
 verify_containers_running() {
     echo "verify_containers_running: $@" >&2
-    ! docker container inspect --format='{{.State.Status}}' "$@" | grep -v -q 'running' \
+    ! $LAPP_ENGINE container inspect --format='{{.State.Status}}' "$@" | grep -v -q 'running' \
         || { echo "verify_containers_running failed: $@" >&2; return 1; }
 }
 
 # Returns success if all specified volumes exist.
 verify_volumes_exist() {
     echo "verify_volumes_exist: $@" >&2
-    docker volume inspect "$@" &>/dev/null \
+    $LAPP_ENGINE volume inspect "$@" &>/dev/null \
         || { echo "verify_volumes_exist failed: $@" >&2; return 1; }
 }
 
@@ -50,7 +50,7 @@ verify_cmd_success() {
         sleep $STEP
         T=$((T+STEP))
         test $T -lt $TIMEOUT \
-            || { echo "verify_cmd_success failed: $@" >&2; docker logs lapp >&2; return 1; }
+            || { echo "verify_cmd_success failed: $@" >&2; $LAPP_ENGINE logs lapp >&2; return 1; }
     done
 
     return 0
@@ -71,7 +71,7 @@ verify_cmd_failed() {
 
     else
         echo "verify_cmd_failed failed: $@" >&2
-        docker logs lapp >&2
+        $LAPP_ENGINE logs lapp >&2
         return 1
     fi
 }
@@ -85,11 +85,11 @@ verify_in_logs() {
     local STEP=2
     local T=0
 
-    while ! docker logs "${3:-lapp}" 2>&1 | grep -q -F "$2"; do
+    while ! $LAPP_ENGINE logs "${3:-lapp}" 2>&1 | grep -q -F "$2"; do
         sleep $STEP
         T=$((T+STEP))
         test $T -lt $1 \
-            || { echo "verify_in_logs failed: '$2'" >&2; docker logs "${3:-lapp}" >&2; return 1; }
+            || { echo "verify_in_logs failed: '$2'" >&2; $LAPP_ENGINE logs "${3:-lapp}" >&2; return 1; }
     done
 
     return 0
@@ -103,12 +103,12 @@ verify_not_in_logs() {
 
     sleep $1
 
-    if docker logs "${3:-lapp}" 2>&1 | grep -q -v -F "$2"; then
+    if $LAPP_ENGINE logs "${3:-lapp}" 2>&1 | grep -q -v -F "$2"; then
         return 0
 
     else
         echo "verify_not_in_logs failed: '$2'" >&2
-        docker logs "${3:-lapp}" >&2
+        $LAPP_ENGINE logs "${3:-lapp}" >&2
         return 1
     fi
 }
@@ -125,10 +125,10 @@ deploy_cert() {
     openssl req -new -sha256 -out $CSR_FILE -key $KEY_FILE -subj "/CN=$1" 2>/dev/null
     openssl x509 -req -days 1 -in $CSR_FILE -signkey $KEY_FILE -out $PEM_FILE -outform PEM 2>/dev/null
 
-    docker cp $KEY_FILE lapp:$VHOSTS_CONF_DIR/$2.key
-    docker exec "${3:-lapp}" /bin/bash -c "chmod 600 $VHOSTS_CONF_DIR/$2.key"
-    docker cp $PEM_FILE lapp:$VHOSTS_CONF_DIR/$2.pem
-    docker exec "${3:-lapp}" /bin/bash -c "chmod 644 $VHOSTS_CONF_DIR/$2.pem; chown apache: $VHOSTS_CONF_DIR/$2."'{key,pem}'
+    $LAPP_ENGINE cp $KEY_FILE lapp:$VHOSTS_CONF_DIR/$2.key
+    $LAPP_ENGINE exec "${3:-lapp}" /bin/bash -c "chmod 600 $VHOSTS_CONF_DIR/$2.key"
+    $LAPP_ENGINE cp $PEM_FILE lapp:$VHOSTS_CONF_DIR/$2.pem
+    $LAPP_ENGINE exec "${3:-lapp}" /bin/bash -c "chmod 644 $VHOSTS_CONF_DIR/$2.pem; chown apache: $VHOSTS_CONF_DIR/$2."'{key,pem}'
 
     rm -f $KEY_FILE $CSR_FILE $PEM_FILE
 }
@@ -136,7 +136,7 @@ deploy_cert() {
 # Cleans up container and volumes after a test
 cleanup() {
     lapp_ stop --rm "$@" -t 1
-    docker volume prune --force >/dev/null
+    $LAPP_ENGINE volume rm --force lapp-www lapp-pgdata $TEST_WWW_VOL $TEST_PG_VOL &>/dev/null || true
 }
 
 
@@ -207,16 +207,16 @@ lapp_ stop --rm
 ! verify_containers_exist lapp
 verify_volumes_exist lapp-www lapp-pgdata
 
-docker volume prune --force >/dev/null
+$LAPP_ENGINE volume rm --force lapp-www lapp-pgdata >/dev/null || true
 
 echo $'\nVerifying argument passthrough' >&2
 lapp_ run --label foo=bar
-test "$(docker inspect --format '{{.Config.Labels.foo}}' lapp)" = 'bar'
+test "$($LAPP_ENGINE inspect --format '{{.Config.Labels.foo}}' lapp)" = 'bar'
 
 cleanup
 
 lapp_ run -- --label foo=bar
-test "$(docker inspect --format '{{.Config.Labels.foo}}' lapp)" = 'bar'
+test "$($LAPP_ENGINE inspect --format '{{.Config.Labels.foo}}' lapp)" = 'bar'
 
 cleanup
 
@@ -230,9 +230,10 @@ verify_in_logs $SUCCESS_TIMEOUT " PHP $PHP_VERSION"
 verify_in_logs $SUCCESS_TIMEOUT 'ready to accept connections'
 
 verify_cmd_success $SUCCESS_TIMEOUT lapp_ stop -R -l >$TEMP_FILE
+# Fails with Podman:
 grep -q 'Stopping the container' $TEMP_FILE
 
-docker volume prune --force >/dev/null
+$LAPP_ENGINE volume rm --force lapp-www lapp-pgdata >/dev/null || true
 
 
 # Test HTTP and HTTPS connectivity
@@ -272,11 +273,11 @@ echo $'\n*************** PHP error logging\n' >&2
 
 lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp .travis/$(basename $SYNTAX_ERR_URL) lapp:$DEFAULT_DOCROOT/
+$LAPP_ENGINE cp .travis/$(basename $SYNTAX_ERR_URL) lapp:$DEFAULT_DOCROOT/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $SYNTAX_ERR_URL | grep -q '500 Internal Server Error'
 verify_in_logs $SUCCESS_TIMEOUT 'PHP Parse error'
 
-docker cp .travis/$(basename $RUNTIME_ERR_URL) lapp:$DEFAULT_DOCROOT/
+$LAPP_ENGINE cp .travis/$(basename $RUNTIME_ERR_URL) lapp:$DEFAULT_DOCROOT/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $RUNTIME_ERR_URL | grep -q '200 OK'
 verify_in_logs $SUCCESS_TIMEOUT 'Undefined variable'
 
@@ -307,77 +308,79 @@ CONT_NAME=foo
 HOST_NAME=dev.under.test
 
 lapp_ run
-test "$(docker exec lapp hostname)" = lapp.${HOSTNAME}
+test "$($LAPP_ENGINE exec lapp hostname)" = lapp.${HOSTNAME}
 cleanup
 
 LAPP_NAME=$CONT_NAME lapp_ run -H $HOST_NAME
-test "$(docker exec $CONT_NAME hostname)" = $HOST_NAME
+test "$($LAPP_ENGINE exec $CONT_NAME hostname)" = $HOST_NAME
 cleanup -n $CONT_NAME
 
 
 # Test volume names, working directories and ownership
 echo $'\n*************** Volume names, bind mounts and ownership, and volume persistence' >&2
-TEST_WWW_VOL='./www-volume/test-www'
-TEST_PG_VOL="$(readlink -f .)/postgres volume/test-pg"
-TEST_DOCROOT="$TEST_WWW_VOL/$DEFAULT_VHOST/public"
-TEST_VHOSTS_CONF_DIR=$TEST_WWW_VOL/$(basename $VHOSTS_CONF_DIR)
+TEST_WWW_VOL=test-www
+TEST_WWW_VOL_MP="./www-volume/$TEST_WWW_VOL"
+TEST_PG_VOL=test-pgdata
+TEST_PG_VOL_MP="$(readlink -f .)/postgres volume/$TEST_PG_VOL"
+TEST_DOCROOT="$TEST_WWW_VOL_MP/$DEFAULT_VHOST/public"
+TEST_VHOSTS_CONF_DIR=$TEST_WWW_VOL_MP/$(basename $VHOSTS_CONF_DIR)
 
 echo $'\nTesting volume names and persistence' >&2
-LAPP_WWW_VOL=$(basename "$TEST_WWW_VOL") lapp_ run -V $(basename "$TEST_PG_VOL")
-verify_volumes_exist $(basename "$TEST_WWW_VOL") $(basename "$TEST_PG_VOL")
+LAPP_WWW_VOL=$TEST_WWW_VOL lapp_ run -V $TEST_PG_VOL
+verify_volumes_exist $TEST_WWW_VOL $TEST_PG_VOL
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-FINGERPRINT="$(docker exec lapp openssl x509 -noout -in $DEFAULT_CERT.pem -fingerprint -sha256)"
+FINGERPRINT="$($LAPP_ENGINE exec lapp openssl x509 -noout -in $DEFAULT_CERT.pem -fingerprint -sha256)"
 
 lapp_ stop --rm -t 1
-LAPP_WWW_VOL=$(basename "$TEST_WWW_VOL") lapp_ run -V $(basename "$TEST_PG_VOL")
+LAPP_WWW_VOL=$TEST_WWW_VOL lapp_ run -V $TEST_PG_VOL
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
-test "$FINGERPRINT" = "$(docker exec lapp openssl x509 -noout -in $DEFAULT_CERT.pem -fingerprint -sha256)"
+test "$FINGERPRINT" = "$($LAPP_ENGINE exec lapp openssl x509 -noout -in $DEFAULT_CERT.pem -fingerprint -sha256)"
 
 cleanup
 
 echo $'\nTesting bind-mounted volumes and persistence' >&2
-LAPP_PG_VOL="$TEST_PG_VOL" lapp_ run -v "$TEST_WWW_VOL"
+LAPP_PG_VOL="$TEST_PG_VOL_MP" lapp_ run -v "$TEST_WWW_VOL_MP"
 
 verify_cmd_success $SUCCESS_TIMEOUT sudo test -f "$TEST_DOCROOT/index.html"
 ! sudo test -O "$TEST_DOCROOT/index.html"
 ! sudo test -G "$TEST_DOCROOT/index.html"
 
-verify_cmd_success $SUCCESS_TIMEOUT sudo test -f "$TEST_PG_VOL/PG_VERSION"
-! sudo test -O "$TEST_PG_VOL/PG_VERSION"
-! sudo test -G "$TEST_PG_VOL/PG_VERSION"
+verify_cmd_success $SUCCESS_TIMEOUT sudo test -f "$TEST_PG_VOL_MP/PG_VERSION"
+! sudo test -O "$TEST_PG_VOL_MP/PG_VERSION"
+! sudo test -G "$TEST_PG_VOL_MP/PG_VERSION"
 
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
 FINGERPRINT="$(sudo openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 lapp_ stop --rm -t 1
-LAPP_PG_VOL="$TEST_PG_VOL" lapp_ run -v "$TEST_WWW_VOL"
+LAPP_PG_VOL="$TEST_PG_VOL_MP" lapp_ run -v "$TEST_WWW_VOL_MP"
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
 test "$FINGERPRINT" = "$(sudo openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 cleanup
-sudo rm -rf "$TEST_WWW_VOL" "$TEST_PG_VOL"
+sudo rm -rf "$TEST_WWW_VOL_MP" "$TEST_PG_VOL_MP"
 
 echo $'\nTesting bind-mounted volume ownership and persistence' >&2
-lapp_ run -v "$TEST_WWW_VOL" -o -V "$TEST_PG_VOL" -O
+lapp_ run -v "$TEST_WWW_VOL_MP" -o -V "$TEST_PG_VOL_MP" -O
 
 verify_cmd_success $SUCCESS_TIMEOUT test -f "$TEST_DOCROOT/index.html"
 test -O "$TEST_DOCROOT/index.html"
 test -G "$TEST_DOCROOT/index.html"
 
-verify_cmd_success $SUCCESS_TIMEOUT test -f "$TEST_PG_VOL/PG_VERSION"
-test -O "$TEST_PG_VOL/PG_VERSION"
-test -G "$TEST_PG_VOL/PG_VERSION"
+verify_cmd_success $SUCCESS_TIMEOUT test -f "$TEST_PG_VOL_MP/PG_VERSION"
+test -O "$TEST_PG_VOL_MP/PG_VERSION"
+test -G "$TEST_PG_VOL_MP/PG_VERSION"
 
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
 FINGERPRINT="$(openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 lapp_ stop --rm -t 1
-lapp_ run -v "$TEST_WWW_VOL" -o -V "$TEST_PG_VOL" -O
+lapp_ run -v "$TEST_WWW_VOL_MP" -o -V "$TEST_PG_VOL_MP" -O
 verify_in_logs $SUCCESS_TIMEOUT 'SSL certificate'
 test "$FINGERPRINT" = "$(openssl x509 -noout -in "$TEST_VHOSTS_CONF_DIR/$DEFAULT_VHOST.pem" -fingerprint -sha256)"
 
 cleanup
-rm -rf "$TEST_WWW_VOL" "$TEST_PG_VOL"
+rm -rf "$TEST_WWW_VOL_MP" "$TEST_PG_VOL_MP"
 
 
 # Test container environment settings
@@ -412,7 +415,7 @@ echo $'\nVerifying mode changes and abbreviations' >&2
 LAPP_MODE=d lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'developer mode'
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp .travis/$(basename $MODE_TEST_URL) lapp:$DEFAULT_DOCROOT/
+$LAPP_ENGINE cp .travis/$(basename $MODE_TEST_URL) lapp:$DEFAULT_DOCROOT/
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $MODE_TEST_URL >$TEMP_FILE
 grep -q '^Server: Apache/.* PHP/.* OpenSSL/.*$' $TEMP_FILE \
     && grep -q '^X-Powered-By: PHP/.*$' $TEMP_FILE \
@@ -435,11 +438,11 @@ echo $'\nVerifying MODE persistence' >&2
 { lapp_ env -l PHP_foo=bar; sleep $PIPE_DELAY; } | grep -q -F 'developer mode with XDebug'
 
 echo $'\nVerifying php.ini setting' >&2
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
+verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
 
 echo $'\nVerifying settings precedence' >&2
 { LAPP_MODE=dev PHP_foo=xyz lapp_ env -l MODE=x PHP_foo=bar; sleep $PIPE_DELAY; } | grep -q -F 'developer mode with XDebug'
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
+verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
 
 cleanup
 
@@ -448,14 +451,14 @@ lapp_ run
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
 
 lapp_ env A=foo BC=bar DEF=baz
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' A="foo"'
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' BC="bar"'
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' DEF="baz"'
+verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' A="foo"'
+verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' BC="bar"'
+verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' DEF="baz"'
 
 lapp_ env A=42 BC= DEF
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' A="42"'
-verify_cmd_success $SUCCESS_TIMEOUT docker exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' BC=""'
-! verify_cmd_success $FAILURE_TIMEOUT docker exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' DEF='
+verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' A="42"'
+verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' BC=""'
+! verify_cmd_success $FAILURE_TIMEOUT $LAPP_ENGINE exec -it lapp /bin/bash -c '. /root/.bashrc; export' | grep -q -F ' DEF='
 
 cleanup
 
@@ -492,11 +495,11 @@ CONTENT=$(openssl rand -hex 12)
 
 lapp_ run -H $HOST_NAME
 verify_in_logs $SUCCESS_TIMEOUT 'AH00094'
-docker cp lapp:$VHOSTS_CONF_DIR/vhost.conf.template /tmp/$VHOST.conf
+$LAPP_ENGINE cp lapp:$VHOSTS_CONF_DIR/vhost.conf.template /tmp/$VHOST.conf
 sed -e 's/Define VHOST_SUBDOMAIN .*/Define VHOST_SUBDOMAIN '$VHOST/ -i /tmp/$VHOST.conf
-docker cp /tmp/$VHOST.conf lapp:$VHOSTS_CONF_DIR/$VHOST.conf
-docker exec lapp /bin/bash -c "mkdir -p $WWW_VOL/$VHOST/public; echo $CONTENT >$WWW_VOL/$VHOST/public/index.html"
-docker exec lapp /bin/bash -c "chown -R apache: $WWW_VOL/$VHOST $VHOSTS_CONF_DIR"
+$LAPP_ENGINE cp /tmp/$VHOST.conf lapp:$VHOSTS_CONF_DIR/$VHOST.conf
+$LAPP_ENGINE exec lapp /bin/bash -c "mkdir -p $WWW_VOL/$VHOST/public; echo $CONTENT >$WWW_VOL/$VHOST/public/index.html"
+$LAPP_ENGINE exec lapp /bin/bash -c "chown -R apache: $WWW_VOL/$VHOST $VHOSTS_CONF_DIR"
 
 deploy_cert $CN $VHOST
 lapp_ env
