@@ -992,13 +992,6 @@ case "$CMD" in
     stop)
         echo '*** '"Stopping container '$LAPP_NAME'"' ***'
 
-        # Collect volume names from container
-        # Note: prior to Podman v1.4.3, the volume name was contained in property .Source, not .Name
-        [ $(compare_versions "$ENGINE_VERSION" '1.4.3') -ge 0 ] && NAME_PROP='.Name' || NAME_PROP='.Source'
-        VOLNAMES=$($LAPP_ENGINE container inspect \
-            --format='{{range .Mounts}}{{if eq .Destination "'$IMG_WWW_ROOT'" "'$IMG_PG_ROOT'"}}{{printf "%s " '$NAME_PROP'}}{{end}}{{end}}' \
-            "$LAPP_NAME" 2>/dev/null)
-
         # Start showing the log if so requested
         if [ -n "$LAPP_LOGS" ]; then
             CMD_START=$($LAPP_ENGINE exec "$LAPP_NAME" date -u -Is)
