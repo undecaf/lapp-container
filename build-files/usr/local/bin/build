@@ -59,7 +59,7 @@ apk -q del .$MUSL_LOCALES
 
 # Build bindfs, see https://github.com/mpartel/bindfs, 
 # https://github.com/gliderlabs/docker-alpine/issues/268#issuecomment-297043078
-BINDFS=bindfs-$BINDFS_VER
+BINDFS=bindfs-1.15.1
 
 apk add fuse
 apk -q --no-cache --virtual .$BINDFS add curl git pkgconfig build-base fuse-dev linux-headers
@@ -81,18 +81,16 @@ apk add \
     shadow \
     syslog-ng \
 	nano \
-    git \
     gettext \
 	tzdata \
 	curl \
 	ca-certificates \
 	openssl \
     rsync \
-    jq \
 	pwgen
 
-# Install s6-overlay
-curl -s -L https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VER}/s6-overlay-amd64.tar.gz \
+# Install a particular version of s6-overlay (different from the version in the distro)
+curl -s -L https://github.com/crazy-max/docker-alpine-s6/releases/download/2.1.0.2-r11/s6-overlay_2.1.0.2_linux_amd64.tar.gz \
     | tar -xz -C /
 
 # Install Apache and PHP

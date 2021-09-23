@@ -173,7 +173,7 @@ TEMP_FILE=$(mktemp)
 echo $'\n*************** Testing '"image $PRIMARY_IMG" >&2
 
 # Clean up Docker on exit
-trap 'set +e; cleanup;' EXIT
+trap 'set +e; cleanup; ' EXIT
 
 # Exit with error status if any verification fails
 set -e
@@ -230,7 +230,6 @@ verify_in_logs $SUCCESS_TIMEOUT " PHP $PHP_VERSION"
 verify_in_logs $SUCCESS_TIMEOUT 'ready to accept connections'
 
 verify_cmd_success $SUCCESS_TIMEOUT lapp_ stop -R -l >$TEMP_FILE
-# Fails with Podman:
 grep -q 'Stopping the container' $TEMP_FILE
 
 $LAPP_ENGINE volume rm --force lapp-www lapp-pgdata >/dev/null || true
@@ -318,12 +317,16 @@ cleanup -n $CONT_NAME
 
 # Test volume names, working directories and ownership
 echo $'\n*************** Volume names, bind mounts and ownership, and volume persistence' >&2
+TMP_DIR="$(readlink -f ./tmp)"
 TEST_WWW_VOL=test-www
-TEST_WWW_VOL_MP="./www-volume/$TEST_WWW_VOL"
+TEST_WWW_VOL_MP="./tmp/www-volume/$TEST_WWW_VOL"
 TEST_PG_VOL=test-pgdata
-TEST_PG_VOL_MP="$(readlink -f .)/postgres volume/$TEST_PG_VOL"
+TEST_PG_VOL_MP="$TMP_DIR/postgres volume/$TEST_PG_VOL"
 TEST_DOCROOT="$TEST_WWW_VOL_MP/$DEFAULT_VHOST/public"
 TEST_VHOSTS_CONF_DIR=$TEST_WWW_VOL_MP/$(basename $VHOSTS_CONF_DIR)
+
+EXIT_TRAP=$(trap -p EXIT)
+trap "$(trap -p EXIT)rm -rf '$TMP_DIR'; " EXIT
 
 echo $'\nTesting volume names and persistence' >&2
 LAPP_WWW_VOL=$TEST_WWW_VOL lapp_ run -V $TEST_PG_VOL
@@ -421,27 +424,27 @@ grep -q '^Server: Apache/.* PHP/.* OpenSSL/.*$' $TEMP_FILE \
     && grep -q '^X-Powered-By: PHP/.*$' $TEMP_FILE \
     || cat $TEMP_FILE
 
-{ lapp_ env -l MODE=pr; sleep $PIPE_DELAY; } | grep -q -F 'production mode'
+lapp_ env -l MODE=pr | grep -q -F 'production mode'
 verify_cmd_success $FAILURE_TIMEOUT curl -Is $MODE_TEST_URL >$TEMP_FILE
 ! grep -q '^Server: Apache/' $TEMP_FILE \
     && grep -q -v '^X-Powered-By:' $TEMP_FILE \
     || cat $TEMP_FILE
 
 echo $'\nVerifying developer mode with XDebug' >&2
-{ lapp_ env -l MODE=x; sleep $PIPE_DELAY; } | grep -q -F 'developer mode with XDebug'
+lapp_ env -l MODE=x | grep -q -F 'developer mode with XDebug'
 verify_cmd_success $SUCCESS_TIMEOUT curl -Is $MODE_TEST_URL >$TEMP_FILE
 grep -q '^Server: Apache/.* PHP/.* OpenSSL/.*$' $TEMP_FILE \
     && grep -q '^X-Powered-By: PHP/.*$' $TEMP_FILE \
     || cat $TEMP_FILE
 
 echo $'\nVerifying MODE persistence' >&2
-{ lapp_ env -l PHP_foo=bar; sleep $PIPE_DELAY; } | grep -q -F 'developer mode with XDebug'
+lapp_ env -l PHP_foo=bar | grep -q -F 'developer mode with XDebug'
 
 echo $'\nVerifying php.ini setting' >&2
 verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
 
 echo $'\nVerifying settings precedence' >&2
-{ LAPP_MODE=dev PHP_foo=xyz lapp_ env -l MODE=x PHP_foo=bar; sleep $PIPE_DELAY; } | grep -q -F 'developer mode with XDebug'
+LAPP_MODE=dev PHP_foo=xyz lapp_ env -l MODE=x PHP_foo=bar | grep -q -F 'developer mode with XDebug'
 verify_cmd_success $SUCCESS_TIMEOUT $LAPP_ENGINE exec -it lapp cat /etc/php${MAJOR_VERSION}/conf.d/zz_99_overrides.ini | grep -q -F 'foo="bar"'
 
 cleanup

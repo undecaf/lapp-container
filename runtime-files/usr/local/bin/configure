@@ -27,10 +27,10 @@ chmod -R o-rwx $VHOSTS_CONF_DIR
 
 # Put everything at and below $WWW_VOL into an archive since this
 # directory may become the mount point of a bind mount at runtime
-tar -czf $WWW_VOL_INIT -C $WWW_VOL .
+tar -czf $WWW_VOL_PRELOAD -C $WWW_VOL .
 
 # Clean up
-#rm -rf $WWW_VOL/* $WWW_VOL/.[!.]*
+rm -rf $WWW_VOL/*
 
 # Leave a marker in $WWW_VOL so that bind mounts can be detected
 touch $WWW_VOL/$UNBOUND_MARKER

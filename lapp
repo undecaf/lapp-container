@@ -997,6 +997,9 @@ case "$CMD" in
             CMD_START=$($LAPP_ENGINE exec "$LAPP_NAME" date -u -Is)
             $LAPP_ENGINE logs --follow --since $CMD_START "$LAPP_NAME" &
             LOGS_PID=$!
+
+            # Wait until the process showing the log is running
+            $SLEEP 2
         else
             LOGS_PID=
         fi
@@ -1006,8 +1009,8 @@ case "$CMD" in
             echo '*** '"Container '$LAPP_NAME' stopped"' ***'
         fi
 
-        # Kill the process showing the log and suppress the termination message
-        [ -n "$LOGS_PID" ] && $KILL $LOGS_PID 2>/dev/null && wait $LOGS_PID 2>/dev/null || true
+        # Kill the process showing the log if necessary and suppress the termination message
+        [ -n "$LOGS_PID" ] && $KILL $LOGS_PID 2>/dev/null && wait $LOGS_PID 2>/dev/null && echo || true
 
         # Remove the container if so requested
         [ -n "$REMOVE_OPTION" ] && run_engine container rm "$LAPP_NAME" || true

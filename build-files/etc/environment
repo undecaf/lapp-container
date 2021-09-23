@@ -15,7 +15,7 @@ export DEFAULT_VHOST=localhost
 export DEFAULT_CERT=$VHOSTS_CONF_DIR/$DEFAULT_VHOST
 export DEFAULT_DOCROOT=$WWW_VOL/$DEFAULT_VHOST/public
 
-export WWW_VOL_INIT=$APACHE_HOME/www-vol-init.tar.gz
+export WWW_VOL_PRELOAD=$APACHE_HOME/www-vol-preload.tar.gz
 
 export PG_USER=postgres
 export PG_RUN=/run/postgresql
